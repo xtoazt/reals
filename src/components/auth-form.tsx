@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Palette, Sparkles, User as UserIcon, KeyRound } from 'lucide-react'; // Changed AtSign to UserIcon
+import { Eye, EyeOff, Palette, Sparkles, User as UserIcon, KeyRound } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -37,7 +37,7 @@ const signupSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters.' }).max(30, { message: 'Username can be at most 30 characters.'}).regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
   specialCode: z.string().optional(),
-  nameColor: z.string().optional(), 
+  nameColor: z.string().optional(),
   title: z.string().optional(),
 });
 
@@ -65,11 +65,11 @@ export function AuthForm() {
       username: '',
       password: '',
       specialCode: '',
-      nameColor: '#FFA500', 
+      nameColor: '#FFA500',
       title: '',
     },
   });
-  
+
   const watchSpecialCode = signupForm.watch('specialCode');
 
   React.useEffect(() => {
@@ -120,25 +120,25 @@ export function AuthForm() {
       const user = userCredential.user;
 
       if (user) {
-        // Update Firebase Auth profile
         await updateProfile(user, {
-            displayName: values.username, // Set displayName to the username
+            displayName: values.username,
         });
 
-        // Store additional profile information in Realtime Database
         const userProfileRef = ref(database, 'users/' + user.uid);
         const profileData: {
             uid: string;
             username: string;
             displayName: string;
+            email: string; // For Firebase Auth consistency and DB validation
             nameColor?: string;
             title?: string;
             bio?: string;
             avatar?: string;
         } = {
             uid: user.uid,
-            username: values.username, // Store the original username
-            displayName: values.username, // Store displayName (initially same as username)
+            username: values.username,
+            displayName: values.username,
+            email: emailForAuth, // Store the derived email used for Auth
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             bio: "New user! Ready to chat.",
         };
@@ -147,7 +147,7 @@ export function AuthForm() {
             profileData.nameColor = values.nameColor || '#FFA500';
             profileData.title = values.title || '';
         }
-        
+
         await set(userProfileRef, profileData);
 
         toast({
@@ -163,6 +163,8 @@ export function AuthForm() {
       let errorMessage = 'An unexpected error occurred.';
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'This username is already taken. Please choose another.';
+      } else if (error.code === 'auth/configuration-not-found') {
+        errorMessage = 'Firebase authentication is not configured correctly. Please check your Firebase project settings.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -175,7 +177,7 @@ export function AuthForm() {
       setIsLoading(false);
     }
   }
-  
+
 
   return (
     <Card className="w-full max-w-md shadow-2xl">
@@ -349,5 +351,3 @@ export function AuthForm() {
     </Card>
   );
 }
-
-    
