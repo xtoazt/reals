@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, ShieldCheck, Copy, Loader2, User as UserIcon } from "lucide-react";
+import { Edit3, Palette, ShieldCheck, Copy, Loader2, User as UserIcon, Users } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
@@ -18,12 +18,13 @@ import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
   uid: string;
-  username: string; 
-  displayName: string; 
+  username: string;
+  displayName: string;
   avatar: string;
   bio: string;
   title?: string;
   nameColor?: string;
+  friendsCount?: number; // Added for mock display
 }
 
 export default function ProfilePage() {
@@ -33,40 +34,38 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioEdit, setBioEdit] = useState('');
-  const [authEmail, setAuthEmail] = useState<string | null>(null); // To store the Firebase Auth email
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email); // Store the auth email
+        setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
         onValue(userProfileRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
             setUserProfile({
               uid: user.uid,
-              username: data.username || (user.email?.split('@')[0] || "User"), // Fallback to part of email if username not in DB
+              username: data.username || (user.email?.split('@')[0] || "User"),
               displayName: data.displayName || user.displayName || "User",
               avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
               bio: data.bio || "No bio yet.",
               title: data.title,
               nameColor: data.nameColor,
+              friendsCount: data.friendsCount || Math.floor(Math.random() * 20), // Mock friend count
             });
             setBioEdit(data.bio || "");
           } else {
-             // This case might occur if DB entry wasn't created properly during signup
-             // Or if a user exists in Auth but not in DB (e.g. old user)
             const fallbackUsername = user.email?.split('@')[0] || "User";
-            const basicProfile = {
+            const basicProfile: UserProfile = {
                 uid: user.uid,
                 username: fallbackUsername,
                 displayName: user.displayName || fallbackUsername,
                 avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
                 bio: "New user! Ready to chat.",
+                friendsCount: 0,
             };
-            // Attempt to create a basic profile if none exists, though signup should handle this.
-            // update(ref(database, 'users/' + user.uid), basicProfile); // Be cautious with auto-writes here
             setUserProfile(basicProfile);
             setBioEdit(basicProfile.bio);
             toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
@@ -82,7 +81,6 @@ export default function ProfilePage() {
         setUserProfile(null);
         setAuthEmail(null);
         setIsLoading(false);
-        // router.push('/auth'); // Consider redirecting if not authenticated
       }
     });
     return () => unsubscribe();
@@ -96,7 +94,7 @@ export default function ProfilePage() {
   };
 
   const handleBioEditToggle = () => {
-    if (isEditingBio && userProfile) { // Save bio
+    if (isEditingBio && userProfile) {
       const userProfileRef = ref(database, 'users/' + userProfile.uid);
       update(userProfileRef, { bio: bioEdit })
         .then(() => {
@@ -149,9 +147,11 @@ export default function ProfilePage() {
                   <ShieldCheck size={16} className="mr-1" /> {userProfile.title}
                 </p>
               )}
-               {authEmail && <p className="text-xs text-muted-foreground/70">(Auth: {authEmail})</p>}
+              {authEmail && <p className="text-xs text-muted-foreground/70">(Auth: {authEmail})</p>}
+              <div className="text-sm text-muted-foreground flex items-center justify-center md:justify-start mt-1">
+                <Users size={16} className="mr-1"/> Friends: {userProfile.friendsCount ?? 0}
+              </div>
             </div>
-            {/* <Button variant="outline"><Edit3 className="mr-2 h-4 w-4" /> Edit Profile</Button> */}
           </div>
           
           <Separator className="my-6" />
@@ -181,12 +181,12 @@ export default function ProfilePage() {
             <h3 className="text-lg font-semibold">Profile Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <Label htmlFor="displayName" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
-                <Input id="displayName" value={userProfile.displayName} disabled />
+                <Label htmlFor="displayNameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
+                <Input id="displayNameInput" value={userProfile.displayName} disabled />
               </div>
                <div>
-                <Label htmlFor="username" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
-                <Input id="username" value={userProfile.username} disabled />
+                <Label htmlFor="usernameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
+                <Input id="usernameInput" value={userProfile.username} disabled />
                  <p className="text-xs text-muted-foreground mt-1">Your unique username.</p>
               </div>
               <div>
@@ -197,17 +197,17 @@ export default function ProfilePage() {
                     <Copy size={16} />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Your unique ID for system purposes.</p>
+                <p className="text-xs text-muted-foreground mt-1">Your unique system identifier. Not used for adding friends.</p>
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="title" className="flex items-center"><ShieldCheck size={14} className="mr-1 text-accent" />Title</Label>
-                  <Input id="title" value={userProfile.title} disabled />
+                  <Label htmlFor="titleInput" className="flex items-center"><ShieldCheck size={14} className="mr-1 text-accent" />Title</Label>
+                  <Input id="titleInput" value={userProfile.title} disabled />
                 </div>
               )}
               {userProfile.nameColor && (
                 <div>
-                  <Label htmlFor="nameColor" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
+                  <Label htmlFor="nameColorDisplay" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
                   <div className="flex items-center gap-2">
                     <div style={{ backgroundColor: userProfile.nameColor }} className="w-10 h-10 rounded border" />
                     <span className="text-sm text-muted-foreground">Current name color</span>
