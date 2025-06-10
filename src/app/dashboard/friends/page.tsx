@@ -5,14 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare } from "lucide-react";
+import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
 import { auth, database } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { ref, onValue, off, set, remove, serverTimestamp, get, query, update } from "firebase/database"; // Added update
+import { ref, onValue, off, set, remove, serverTimestamp, get, query, update, runTransaction } from "firebase/database";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface FriendRequest {
   id: string; // sender's UID
@@ -28,7 +29,7 @@ interface Friend {
   displayName: string;
   avatar?: string;
   nameColor?: string;
-  status?: string; // For UI, mock for now
+  status?: string; 
 }
 
 interface UserProfileData {
@@ -39,9 +40,9 @@ interface UserProfileData {
     nameColor?: string;
 }
 
-
 export default function FriendsPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   
@@ -74,7 +75,6 @@ export default function FriendsPage() {
     }
   }, [usersCache]);
 
-
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -93,7 +93,6 @@ export default function FriendsPage() {
     return () => unsubscribeAuth();
   }, [fetchUserProfile]);
 
-  // Fetch Friend Requests
   useEffect(() => {
     if (!currentUser) return;
     setIsLoadingRequests(true);
@@ -103,7 +102,7 @@ export default function FriendsPage() {
       if (requestsData) {
         const loadedRequests: FriendRequest[] = [];
         for (const senderUid in requestsData) {
-          if (requestsData[senderUid]?.status !== 'pending') continue; // Only process pending requests
+          if (requestsData[senderUid]?.status !== 'pending') continue; 
           const request = requestsData[senderUid];
           const senderProfile = await fetchUserProfile(senderUid);
           loadedRequests.push({
@@ -127,7 +126,6 @@ export default function FriendsPage() {
     return () => off(requestsRef, 'value', listener);
   }, [currentUser, fetchUserProfile, toast]);
 
-  // Fetch Friends
   useEffect(() => {
     if (!currentUser) return;
     setIsLoadingFriends(true);
@@ -136,7 +134,8 @@ export default function FriendsPage() {
       const friendsData = snapshot.val();
       if (friendsData) {
         const loadedFriends: Friend[] = [];
-        for (const friendUid in friendsData) {
+        const friendUIDs = Object.keys(friendsData);
+        for (const friendUid of friendUIDs) {
           const profile = await fetchUserProfile(friendUid);
           if (profile) {
             loadedFriends.push({
@@ -145,7 +144,7 @@ export default function FriendsPage() {
               displayName: profile.displayName,
               avatar: profile.avatar,
               nameColor: profile.nameColor,
-              status: Math.random() > 0.5 ? 'Online' : 'Offline', // Mock status
+              status: Math.random() > 0.5 ? 'Online' : 'Offline', 
             });
           }
         }
@@ -162,6 +161,10 @@ export default function FriendsPage() {
     return () => off(friendsRef, 'value', listener);
   }, [currentUser, fetchUserProfile, toast]);
 
+  const generateDmChatId = (uid1: string, uid2: string): string => {
+    const ids = [uid1, uid2].sort();
+    return `dm_${ids[0]}_${ids[1]}`;
+  };
 
   const handleAddFriend = async () => {
     if (!friendUsernameToAdd.trim()) {
@@ -180,15 +183,33 @@ export default function FriendsPage() {
     setIsLoadingAddFriend(true);
     try {
       const usernameRef = ref(database, `usernames/${friendUsernameToAdd.trim().toLowerCase()}`);
-      const snapshot = await get(usernameRef);
+      const usernameSnapshot = await get(usernameRef);
 
-      if (!snapshot.exists()) {
+      if (!usernameSnapshot.exists()) {
         toast({ title: "User Not Found", description: `User "${friendUsernameToAdd}" does not exist.`, variant: "destructive" });
         setIsLoadingAddFriend(false);
         return;
       }
       
-      const targetUid = snapshot.val();
+      const targetUid = usernameSnapshot.val();
+
+      // Check if current user is blocked by target user
+      const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
+      const blockedByTargetSnap = await get(blockedByTargetRef);
+      if (blockedByTargetSnap.exists()) {
+        toast({ title: "Cannot Add Friend", description: `You cannot send a friend request to this user at this time.`, variant: "destructive" });
+        setIsLoadingAddFriend(false);
+        return;
+      }
+
+      // Check if target user is blocked by current user
+      const targetBlockedByMeRef = ref(database, `blocked_users/${currentUser.uid}/${targetUid}`);
+      const targetBlockedByMeSnap = await get(targetBlockedByMeRef);
+      if (targetBlockedByMeSnap.exists()) {
+        toast({ title: "Unblock User", description: `You have blocked ${friendUsernameToAdd}. Unblock them to send a friend request.`, variant: "destructive" });
+        setIsLoadingAddFriend(false);
+        return;
+      }
 
       const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
       const friendSnapshot = await get(friendCheckRef);
@@ -216,8 +237,8 @@ export default function FriendsPage() {
          return;
       }
 
-      const requestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
-      await set(requestRef, {
+      const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
+      await set(requestPayloadRef, {
         senderUsername: currentUserProfile.username,
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
@@ -236,18 +257,37 @@ export default function FriendsPage() {
   
   const handleAcceptRequest = async (senderUid: string, senderUsername: string) => {
     if (!currentUser) return;
+
+    // Check for blocks before accepting
+    const iBlockedSenderRef = ref(database, `blocked_users/${currentUser.uid}/${senderUid}`);
+    const iBlockedSenderSnap = await get(iBlockedSenderRef);
+    if (iBlockedSenderSnap.exists()) {
+        toast({ title: "Cannot Accept", description: `You have blocked ${senderUsername}. Unblock them to accept.`, variant: "destructive" });
+        return;
+    }
+    const senderBlockedMeRef = ref(database, `users_blocked_by/${currentUser.uid}/${senderUid}`);
+    const senderBlockedMeSnap = await get(senderBlockedMeRef);
+    if (senderBlockedMeSnap.exists()) {
+        toast({ title: "Cannot Accept", description: `${senderUsername} has blocked you.`, variant: "destructive" });
+        // Also remove the request as it's invalid
+        const requestToRemoveRef = ref(database, `friend_requests/${currentUser.uid}/${senderUid}`);
+        await remove(requestToRemoveRef);
+        return;
+    }
+
     try {
       const updates: { [key: string]: any } = {};
       const friendData = { since: serverTimestamp() };
 
       updates[`/friends/${currentUser.uid}/${senderUid}`] = friendData;
-      updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData; // Reciprocal
-      updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; // Delete request
+      updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData;
+      updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; 
 
       await update(ref(database), updates);
 
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${senderUsername}.`});
-    } catch (error: any) {
+    } catch (error: any)
+{
       console.error("Error accepting friend request:", error);
       toast({ title: "Error", description: `Could not accept friend request: ${error.message}`, variant: "destructive" });
     }
@@ -265,25 +305,64 @@ export default function FriendsPage() {
     }
   };
 
-  const handleRemoveFriend = async (friendUid: string, friendUsername: string) => {
-    if (!currentUser) return;
+  const handleBlockUser = async (friendUid: string, friendUsername: string) => {
+    if (!currentUser || !currentUserProfile) return;
+    if (currentUser.uid === friendUid) {
+        toast({ title: "Error", description: "You cannot block yourself.", variant: "destructive" });
+        return;
+    }
+
+    // Confirmation dialog might be good here in a real app
+    toast({
+        title: `Blocking ${friendUsername}`,
+        description: "This will remove them as a friend and prevent further interaction.",
+    });
+
     try {
-      const updates: { [key: string]: any } = {};
-      updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
-      updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
+        const updates: { [key: string]: any } = {};
+        updates[`/blocked_users/${currentUser.uid}/${friendUid}`] = true;
+        updates[`/users_blocked_by/${friendUid}/${currentUser.uid}`] = true;
 
-      await update(ref(database), updates);
+        // Remove friendship
+        updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
+        updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
 
-      toast({ title: "Friend Removed", description: `You are no longer friends with ${friendUsername}.` });
+        // Remove any pending friend requests between them
+        updates[`/friend_requests/${currentUser.uid}/${friendUid}`] = null;
+        updates[`/friend_requests/${friendUid}/${currentUser.uid}`] = null;
+        
+        await update(ref(database), updates);
+
+        toast({ title: "User Blocked", description: `You have blocked ${friendUsername}. They have been removed from your friends list.` });
     } catch (error: any) {
-      console.error("Error removing friend:", error);
-      toast({ title: "Error", description: `Could not remove friend: ${error.message}`, variant: "destructive" });
+        console.error("Error blocking user:", error);
+        toast({ title: "Error", description: `Could not block user: ${error.message}`, variant: "destructive" });
+    }
+  };
+  
+  const handleUnblockUser = async (userToUnblockUid: string, userToUnblockUsername: string) => {
+    if (!currentUser || !currentUserProfile) return;
+    toast({
+        title: `Unblocking ${userToUnblockUsername}`,
+        description: "You will be able to send/receive friend requests with them again.",
+    });
+    try {
+        const updates: { [key: string]: any } = {};
+        updates[`/blocked_users/${currentUser.uid}/${userToUnblockUid}`] = null;
+        updates[`/users_blocked_by/${userToUnblockUid}/${currentUser.uid}`] = null;
+        
+        await update(ref(database), updates);
+        toast({ title: "User Unblocked", description: `You have unblocked ${userToUnblockUsername}.` });
+        // Note: This does not automatically re-friend them. They would need to send/accept a new request.
+    } catch (error: any) {
+        console.error("Error unblocking user:", error);
+        toast({ title: "Error", description: `Could not unblock user: ${error.message}`, variant: "destructive" });
     }
   };
 
+
   const handleViewProfile = (username: string) => {
-    // In a real app, this would navigate: router.push(`/dashboard/profile/${username}`);
-    // For now, it shows a toast.
+    // router.push(`/dashboard/profile/${username}`); // If you implement dynamic profile pages
     toast({ title: "View Profile", description: `Functionality to view @${username}'s profile would go here.` });
   };
 
@@ -354,14 +433,14 @@ export default function FriendsPage() {
                         <Button variant="outline" size="sm" className="flex-1" onClick={() => handleViewProfile(friend.username)}>
                             <Users className="mr-2 h-3 w-3"/> Profile
                         </Button>
-                        <Link href={`/dashboard/chat/dm-${friend.id}`} passHref className="flex-1">
-                             <Button variant="default" size="sm" className="w-full">
+                        <Link href={`/dashboard/chat/${currentUser ? generateDmChatId(currentUser.uid, friend.id) : '#'}`} passHref className="flex-1">
+                             <Button variant="default" size="sm" className="w-full" disabled={!currentUser}>
                                 <MessageSquare className="mr-2 h-3 w-3"/> Chat
                             </Button>
                         </Link>
                     </div>
-                     <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-100 w-full justify-center" onClick={() => handleRemoveFriend(friend.id, friend.username)}>
-                        <UserX className="mr-1 h-4 w-4" /> Remove Friend
+                     <Button variant="destructive" size="sm" className="w-full justify-center" onClick={() => handleBlockUser(friend.id, friend.username)}>
+                        <UserX className="mr-1 h-4 w-4" /> Block & Remove
                     </Button>
                   </Card>
                 ))
@@ -403,6 +482,21 @@ export default function FriendsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      {/* Example of where a list of blocked users could go - For future enhancement */}
+      {/* <Card>
+        <CardHeader><CardTitle>Blocked Users</CardTitle></CardHeader>
+        <CardContent>
+            <p className="text-muted-foreground">Users you have blocked will appear here. (UI Mock)</p>
+            { mockBlockedUsers.map(user => (
+                <div key={user.id} className="flex items-center justify-between p-2 border-b">
+                    <p>{user.username}</p>
+                    <Button variant="outline" size="sm" onClick={() => handleUnblockUser(user.id, user.username)}>
+                        <ShieldOff className="mr-2 h-4 w-4" /> Unblock
+                    </Button>
+                </div>
+            ))}
+        </CardContent>
+      </Card> */}
     </div>
   );
 }

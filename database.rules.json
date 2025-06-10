@@ -11,6 +11,7 @@
         "displayName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
         "email": { ".validate": "newData.isString() && newData.val().length > 0" },
         "avatar": { ".validate": "newData.isString()" },
+        "banner": { ".validate": "newData.isString()" },
         "bio": { ".validate": "newData.isString() && newData.val().length <= 1000" },
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
         "title": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
@@ -19,15 +20,17 @@
     },
     "usernames": {
       "$username": {
-        ".read": true,
+        ".read": true, 
         ".write": "auth != null && newData.isString() && newData.val().length > 0",
         ".validate": "newData.isString() && newData.val().length > 10"
       }
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        // For DMs (e.g., "dm_uid1_uid2"), only involved users can read/write.
+        // For other chats (global, party), any authenticated user can read/write (can be refined).
+        ".read": "auth != null && ( ($chatId.startsWith('dm_') && $chatId.contains(auth.uid)) || (!$chatId.startsWith('dm_')) )",
+        ".write": "auth != null && ( ($chatId.startsWith('dm_') && $chatId.contains(auth.uid)) || (!$chatId.startsWith('dm_')) )",
         "$messageId": {
           ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
           "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
@@ -44,17 +47,10 @@
     },
     "friend_requests": {
       "$receiver_uid": {
-        // A user can read all friend requests sent to them (for listing).
         ".read": "auth != null && auth.uid === $receiver_uid",
         "$sender_uid": {
-          // Allow read if auth.uid is the receiver OR the sender of this specific request.
-          // This rule is more specific and takes precedence for path /friend_requests/$receiver_uid/$sender_uid.
           ".read": "auth != null && (auth.uid === $receiver_uid || auth.uid === $sender_uid)",
-          // Write rule:
-          // Sender can create the request (newData exists, old data doesn't).
-          // Receiver can delete the request (newData doesn't exist, old data does).
           ".write": "auth != null && ( (newData.exists() && !data.exists() && auth.uid === $sender_uid) || (!newData.exists() && data.exists() && auth.uid === $receiver_uid) )",
-          // Validation rules apply when newData exists (i.e., when creating/updating, not deleting)
           ".validate": "!newData.exists() || (newData.hasChildren(['senderUsername', 'senderUid', 'timestamp', 'status']) && newData.child('senderUid').val() === $sender_uid)",
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0" },
           "senderUid": { ".validate": "newData.isString() && newData.val() === $sender_uid" },
@@ -68,10 +64,30 @@
       "$user_uid": {
         ".read": "auth != null && auth.uid === $user_uid",
         "$friend_uid": {
-          ".write": "auth != null && auth.uid === $user_uid",
+          ".write": "auth != null && (auth.uid === $user_uid || auth.uid === $friend_uid)",
           ".validate": "newData.hasChildren(['since'])",
           "since": {".validate": "newData.val() === now || newData.isNumber()"},
           "$other": { ".validate": false }
+        }
+      }
+    },
+    "blocked_users": {
+      "$blocker_uid": {
+        ".read": "auth != null && auth.uid === $blocker_uid", // User can read who they blocked
+        "$blocked_uid": {
+          ".write": "auth != null && auth.uid === $blocker_uid", // User can write to their own blocked list
+          ".validate": "newData.isBoolean()"
+        }
+      }
+    },
+    "users_blocked_by": {
+      "$blocked_uid": {
+        ".read": "auth != null && auth.uid === $blocked_uid", // User can read who blocked them (for client-side checks)
+        "$blocker_uid": {
+           // This path is written to by the blocker, not the blocked user.
+           // Write access granted if the auth.uid is the $blocker_uid (from the path).
+          ".write": "auth != null && auth.uid === $blocker_uid",
+          ".validate": "newData.isBoolean()"
         }
       }
     }

@@ -4,12 +4,13 @@
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon } from 'lucide-react';
+import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
-import { ref, set, get, serverTimestamp } from 'firebase/database';
+import { ref, set, get, serverTimestamp, update, remove } from 'firebase/database';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 export interface Message {
   id: string;
@@ -20,8 +21,8 @@ export interface Message {
   senderTitle?: string;
   avatar?: string;
   content: string;
-  timestamp: string; // Formatted display time
-  originalTimestamp?: number; // Raw timestamp for sorting
+  timestamp: string; 
+  originalTimestamp?: number; 
   isOwnMessage: boolean;
   reactions?: { [key: string]: number };
   imageUrl?: string;
@@ -49,6 +50,23 @@ export function ChatMessage({ message }: ChatMessageProps) {
       toast({ title: "Info", description: "You cannot send a friend request to yourself." });
       return;
     }
+    
+    // Check if current user is blocked by target user
+    const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
+    const blockedByTargetSnap = await get(blockedByTargetRef);
+    if (blockedByTargetSnap.exists()) {
+      toast({ title: "Cannot Add Friend", description: `You cannot send a friend request to this user at this time.`, variant: "destructive" });
+      return;
+    }
+
+    // Check if target user is blocked by current user
+    const targetBlockedByMeRef = ref(database, `blocked_users/${currentUser.uid}/${targetUid}`);
+    const targetBlockedByMeSnap = await get(targetBlockedByMeRef);
+    if (targetBlockedByMeSnap.exists()) {
+      toast({ title: "Unblock User", description: `You have blocked @${targetUsername}. Unblock them to send a friend request.`, variant: "destructive" });
+      return;
+    }
+
 
     try {
       const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
@@ -71,12 +89,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
          return;
       }
 
-      const requestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
+      const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       const currentUserProfileRef = ref(database, `users/${currentUser.uid}`);
       const currentUserProfileSnap = await get(currentUserProfileRef);
       const currentUserUsernameVal = currentUserProfileSnap.val()?.username || "A user";
 
-      await set(requestRef, {
+      await set(requestPayloadRef, {
         senderUsername: currentUserUsernameVal,
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
@@ -86,6 +104,45 @@ export function ChatMessage({ message }: ChatMessageProps) {
     } catch (error) {
       console.error("Error sending friend request from chat:", error);
       toast({ title: "Error", description: "Could not send friend request.", variant: "destructive" });
+    }
+  };
+
+  const handleBlockUserFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
+    if (!currentUser || !currentUser.uid) {
+      toast({ title: "Error", description: "You must be logged in to block users.", variant: "destructive" });
+      return;
+    }
+    if (!targetUid || !targetUsername) {
+        toast({ title: "Error", description: "Cannot identify user to block.", variant: "destructive" });
+        return;
+    }
+    if (currentUser.uid === targetUid) {
+        toast({ title: "Error", description: "You cannot block yourself.", variant: "destructive" });
+        return;
+    }
+    
+    toast({
+        title: `Blocking @${targetUsername}`,
+        description: "This will remove them as a friend and prevent future friend requests.",
+    });
+
+    try {
+        const updates: { [key: string]: any } = {};
+        updates[`/blocked_users/${currentUser.uid}/${targetUid}`] = true;
+        updates[`/users_blocked_by/${targetUid}/${currentUser.uid}`] = true;
+
+        updates[`/friends/${currentUser.uid}/${targetUid}`] = null;
+        updates[`/friends/${targetUid}/${currentUser.uid}`] = null;
+
+        updates[`/friend_requests/${currentUser.uid}/${targetUid}`] = null;
+        updates[`/friend_requests/${targetUid}/${currentUser.uid}`] = null;
+        
+        await update(ref(database), updates);
+
+        toast({ title: "User Blocked", description: `You have blocked @${targetUsername}.` });
+    } catch (error: any) {
+        console.error("Error blocking user from chat:", error);
+        toast({ title: "Error", description: `Could not block user: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -118,6 +175,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
             <UserPlus className="mr-2 h-4 w-4" /> Add Friend
           </Button>
+          <Button variant="destructive" size="sm" onClick={() => handleBlockUserFromChat(message.senderUid, message.senderUsername)}>
+            <UserX className="mr-2 h-4 w-4" /> Block User
+          </Button>
         </div>
       ),
     });
@@ -149,7 +209,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </a>
             );
         } catch (e) {
-            return part;
+            return part; // Return part as is if URL parsing fails
         }
       }
       return part;
