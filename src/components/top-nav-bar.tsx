@@ -3,11 +3,11 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Search, Bell, Menu, Shield } from 'lucide-react';
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Shield } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Input } from '@/components/ui/input';
+// Input is no longer needed here as search bar is removed
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,8 @@ const navItems = [
   { href: '/dashboard/chat/global', label: 'Global Chat', icon: MessageSquare },
   { href: '/dashboard/chat/ai-chatbot', label: 'AI Chatbot', icon: Bot },
   { href: '/dashboard/friends', label: 'Friends', icon: Users },
+  { href: '/dashboard/profile', label: 'Profile', icon: UserCircle },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
 interface UserProfileData {
@@ -81,7 +83,7 @@ export function TopNavBar() {
       router.push('/auth');
     } catch (error) {
       console.error('Logout error:', error);
-      toast({ title: 'Logout Failed', description: 'Could not log you out.', variant: 'destructive' });
+      toast({ title: 'Logout Failed', description: 'Could not log you out. Please try again.', variant: 'destructive' });
     }
   };
   
@@ -118,20 +120,7 @@ export function TopNavBar() {
                 <PlusCircle className="h-5 w-5" /> Create Party
               </Button>
             </CreatePartyDialog>
-             <Link
-                href="/dashboard/profile"
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname === '/dashboard/profile' ? 'text-primary bg-muted' : 'text-muted-foreground'}`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <UserCircle className="h-5 w-5" /> Profile
-              </Link>
-              <Link
-                href="/dashboard/settings"
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname === '/dashboard/settings' ? 'text-primary bg-muted' : 'text-muted-foreground'}`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <Settings className="h-5 w-5" /> Settings
-              </Link>
+             {/* Profile and Settings are now part of navItems, so no need to duplicate here for mobile if navItems is used for mobile too */}
           </nav>
         </SheetContent>
       </Sheet>
@@ -146,10 +135,10 @@ export function TopNavBar() {
 
       {/* Desktop Tabs Navigation */}
       <nav className="hidden md:flex flex-1 items-center justify-center">
-        <Tabs value={pathname} className="w-auto">
+        <Tabs value={pathname.startsWith('/dashboard/chat/') ? '/dashboard/chat/global' : pathname} className="w-auto"> {/* Adjusted value to handle dynamic chat routes better */}
           <TabsList>
             {navItems.map((item) => (
-              <TabsTrigger key={item.label} value={item.href} asChild>
+              <TabsTrigger key={item.label} value={item.href === '/dashboard/chat/global' && pathname.startsWith('/dashboard/chat/') ? pathname : item.href} asChild>
                 <Link href={item.href} className="flex items-center gap-1.5 px-3 py-1.5">
                   <item.icon className="h-4 w-4" /> {item.label}
                 </Link>
@@ -166,14 +155,7 @@ export function TopNavBar() {
       
       {/* Right side actions */}
       <div className="ml-auto flex items-center gap-2">
-        <div className="relative hidden sm:block">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search..."
-            className="w-full rounded-lg bg-card pl-8 md:w-[150px] lg:w-[250px] h-9"
-          />
-        </div>
+        {/* Search bar removed from here */}
         <ThemeToggle />
         <Button variant="ghost" size="icon" className="rounded-full">
           <Bell className="h-5 w-5" />
