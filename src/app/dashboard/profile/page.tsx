@@ -14,20 +14,23 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update, get, off } from 'firebase/database';
-import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+// Firebase Storage imports removed
 import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
   uid: string;
   username: string;
   displayName: string;
-  avatar: string;
-  banner?: string;
+  avatar: string; // Can be a URL (placehold.co) or a Data URI
+  banner?: string; // Can be a URL (placehold.co) or a Data URI
   bio: string;
   title?: string;
   nameColor?: string;
   friendsCount?: number;
 }
+
+const MAX_AVATAR_SIZE_BYTES = 500 * 1024; // 500KB
+const MAX_BANNER_SIZE_BYTES = 1 * 1024 * 1024; // 1MB
 
 export default function ProfilePage() {
   const { toast } = useToast();
@@ -47,7 +50,7 @@ export default function ProfilePage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email); // This is the derived email like user@realtalk.users.app
+        setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
         const friendsRef = ref(database, `friends/${user.uid}`);
 
@@ -72,7 +75,7 @@ export default function ProfilePage() {
                 friendsCount: friendsCount,
                 });
                 setBioEdit(data.bio || "");
-            } else { // Fallback for new users if profile isn't instantly available (should be rare)
+            } else {
                 const fallbackUsername = user.email?.split('@')[0] || "User";
                 const basicProfile: UserProfile = {
                     uid: user.uid,
@@ -89,7 +92,7 @@ export default function ProfilePage() {
             setIsLoading(false);
           }).catch(error => {
             console.error("Error fetching friends count:", error);
-            if (data) { // If profile data exists but friends fetch failed
+            if (data) {
                 setUserProfile({ ...data, uid: user.uid, banner: data.banner || "https://placehold.co/1200x300.png?text=Banner", friendsCount: 0 });
                 setBioEdit(data.bio || "");
             }
@@ -101,7 +104,6 @@ export default function ProfilePage() {
             setIsLoading(false);
         });
         
-        // Listener for dynamic updates to friends count
         const friendsListener = onValue(friendsRef, (snapshot) => {
           let friendsCount = 0;
           if (snapshot.exists()) {
@@ -110,7 +112,7 @@ export default function ProfilePage() {
           setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
         });
 
-        return () => { // Cleanup listeners
+        return () => {
             off(userProfileRef, 'value', profileListener);
             off(friendsRef, 'value', friendsListener);
         };
@@ -148,52 +150,56 @@ export default function ProfilePage() {
     }
     if (!file) return;
 
+    const maxSize = imageType === 'avatar' ? MAX_AVATAR_SIZE_BYTES : MAX_BANNER_SIZE_BYTES;
+    if (file.size > maxSize) {
+        const limit = imageType === 'avatar' ? '500KB' : '1MB';
+        toast({
+            title: "File Too Large",
+            description: `${imageType === 'avatar' ? 'Avatar' : 'Banner'} image must be less than ${limit}. Please choose a smaller file or resize it.`,
+            variant: "destructive",
+        });
+        if (avatarInputRef.current) avatarInputRef.current.value = ""; // Reset file input
+        if (bannerInputRef.current) bannerInputRef.current.value = ""; // Reset file input
+        return;
+    }
+
     if (imageType === 'avatar') setIsUploadingAvatar(true);
     if (imageType === 'banner') setIsUploadingBanner(true);
 
-    const storage = getStorage();
-    const filePath = imageType === 'avatar' 
-      ? `user_avatars/${currentUser.uid}/${file.name}` 
-      : `user_banners/${currentUser.uid}/${file.name}`;
-    const fileStorageRef = storageRef(storage, filePath);
-
-    const uploadTask = uploadBytesResumable(fileStorageRef, file);
-
-    uploadTask.on('state_changed',
-      (snapshot) => {
-        // Optional: handle progress
-        // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        // console.log('Upload is ' + progress + '% done');
-      },
-      (error) => {
-        console.error("Upload error:", error);
-        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const dataUri = reader.result as string;
+      const userProfileRef = ref(database, 'users/' + currentUser.uid);
+      try {
+        if (imageType === 'avatar') {
+          await update(userProfileRef, { avatar: dataUri });
+          setUserProfile(prev => prev ? { ...prev, avatar: dataUri } : null);
+          toast({ title: "Success", description: "Profile picture updated." });
+        } else if (imageType === 'banner') {
+          await update(userProfileRef, { banner: dataUri });
+          setUserProfile(prev => prev ? { ...prev, banner: dataUri } : null);
+          toast({ title: "Success", description: "Banner image updated." });
+        }
+      } catch (error: any) {
+        console.error("Error updating profile with new image Data URI:", error);
+        toast({ title: "Update Failed", description: "Could not update profile with new image.", variant: "destructive" });
+      } finally {
         if (imageType === 'avatar') setIsUploadingAvatar(false);
         if (imageType === 'banner') setIsUploadingBanner(false);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const userProfileRef = ref(database, 'users/' + currentUser.uid);
-          
-          if (imageType === 'avatar') {
-            await update(userProfileRef, { avatar: downloadURL });
-            setUserProfile(prev => prev ? { ...prev, avatar: downloadURL } : null);
-            toast({ title: "Success", description: "Profile picture updated." });
-          } else if (imageType === 'banner') {
-            await update(userProfileRef, { banner: downloadURL });
-            setUserProfile(prev => prev ? { ...prev, banner: downloadURL } : null);
-            toast({ title: "Success", description: "Banner image updated." });
-          }
-        } catch (error: any) {
-            console.error("Error updating profile with new image URL:", error);
-            toast({ title: "Update Failed", description: "Could not update profile with new image.", variant: "destructive" });
-        } finally {
-            if (imageType === 'avatar') setIsUploadingAvatar(false);
-            if (imageType === 'banner') setIsUploadingBanner(false);
-        }
+        // Reset file input value after processing
+        if (avatarInputRef.current) avatarInputRef.current.value = "";
+        if (bannerInputRef.current) bannerInputRef.current.value = "";
       }
-    );
+    };
+    reader.onerror = (error) => {
+      console.error("Error reading file:", error);
+      toast({ title: "Upload Failed", description: "Could not read image file.", variant: "destructive" });
+      if (imageType === 'avatar') setIsUploadingAvatar(false);
+      if (imageType === 'banner') setIsUploadingBanner(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+      if (bannerInputRef.current) bannerInputRef.current.value = "";
+    };
   };
 
   const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -17,12 +17,7 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      { // Added for Firebase Storage
-        protocol: 'https',
-        hostname: 'firebasestorage.googleapis.com',
-        port: '',
-        pathname: '/**',
-      }
+      // Firebase Storage pattern removed as we are moving to Data URIs for user uploads
     ],
   },
 };
