@@ -44,10 +44,15 @@
     },
     "friend_requests": {
       "$receiver_uid": {
+        // A user can read all friend requests sent to them.
+        ".read": "auth != null && auth.uid === $receiver_uid",
         "$sender_uid": {
-          ".read": "auth != null && (auth.uid === $receiver_uid || auth.uid === $sender_uid)",
-          ".write": "auth != null && (auth.uid === $sender_uid || auth.uid === $receiver_uid)",
-          ".validate": "newData.hasChildren(['senderUsername', 'senderUid', 'timestamp', 'status']) && newData.child('senderUid').val() === $sender_uid",
+          // Write rule:
+          // Sender can create the request (newData exists, old data doesn't).
+          // Receiver can delete the request (newData doesn't exist, old data does).
+          ".write": "auth != null && ( (newData.exists() && !data.exists() && auth.uid === $sender_uid) || (!newData.exists() && data.exists() && auth.uid === $receiver_uid) )",
+          // Validation rules apply when newData exists
+          ".validate": "!newData.exists() || (newData.hasChildren(['senderUsername', 'senderUid', 'timestamp', 'status']) && newData.child('senderUid').val() === $sender_uid)",
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0" },
           "senderUid": { ".validate": "newData.isString() && newData.val() === $sender_uid" },
           "timestamp": { ".validate": "newData.val() === now || newData.isNumber()" },
