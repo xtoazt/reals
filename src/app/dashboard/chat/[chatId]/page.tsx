@@ -3,58 +3,69 @@
 
 import { ChatInterface } from '@/components/chat/chat-interface';
 import { notFound, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react'; // Changed to import React for React.use
 import { auth, database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
 
-interface ChatPageParams {
-  params: {
-    chatId: string;
-  };
+interface ResolvedParams { // Shape of params after unwrapping
+  chatId: string;
+}
+
+interface ChatPageProps { // Props for the component
+  params: Promise<ResolvedParams>; // params prop is a Promise
 }
 
 interface UserProfileData {
   displayName: string;
 }
 
-export default function ChatPage({ params }: ChatPageParams) {
-  const { chatId } = params;
+export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
+  // Unwap the params Promise using React.use()
+  const params = React.use(paramsPromise);
+  const { chatId } = params; // Now params is { chatId: string }
+
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'party' | 'dm' | 'ai'>('global');
-  const [resolvedChatId, setResolvedChatId] = useState(chatId);
+  const [resolvedChatId, setResolvedChatId] = useState(chatId); // Initialize with unwrapped chatId
+
+  // Effect to update resolvedChatId if chatId from params changes.
+  useEffect(() => {
+    setResolvedChatId(chatId);
+  }, [chatId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      if (!user && chatId !== 'ai-chatbot' && chatId !== 'global') { // AI and global can be viewed logged out for now
-        // router.push('/auth'); // Consider if you want to redirect immediately
+      if (!user && resolvedChatId !== 'ai-chatbot' && resolvedChatId !== 'global') {
+        // router.push('/auth'); 
       }
     });
     return () => unsubscribe();
-  }, [router, chatId]);
+  }, [router, resolvedChatId]);
 
   useEffect(() => {
     setIsLoading(true);
     let determinedTitle = '';
     let determinedType: 'global' | 'party' | 'dm' | 'ai' = 'global';
-    let determinedResolvedChatId = chatId;
+    // Use resolvedChatId (state) for consistency within this effect
+    let determinedResolvedChatId = resolvedChatId; 
 
     const setupChat = async () => {
-      if (chatId === 'global') {
+      if (resolvedChatId === 'global') {
         determinedTitle = 'Global Chat';
         determinedType = 'global';
-      } else if (chatId === 'ai-chatbot') {
+      } else if (resolvedChatId === 'ai-chatbot') {
         determinedTitle = 'AI Chatbot';
         determinedType = 'ai';
-      } else if (chatId.startsWith('dm_')) {
+      } else if (resolvedChatId && resolvedChatId.includes('dm_')) { // Check resolvedChatId for safety
         determinedType = 'dm';
-        if (currentUser) {
-          const uids = chatId.substring(3).split('_');
+        if (currentUser && currentUser.uid) {
+          const uids = resolvedChatId.substring(3).split('_');
           const otherUserId = uids.find(uid => uid !== currentUser.uid);
 
           if (otherUserId) {
@@ -72,44 +83,40 @@ export default function ChatPage({ params }: ChatPageParams) {
               determinedTitle = 'Chat with User'; // Fallback on error
             }
           } else {
-            determinedTitle = 'Direct Message'; // Should not happen if UIDs are correct
-             // Potentially redirect or show error if otherUserId is not found and current user is one of them
-            if (!uids.includes(currentUser.uid)) {
+            determinedTitle = 'Direct Message'; 
+            if (currentUser.uid && !uids.includes(currentUser.uid)) {
                 console.error("Current user not part of this DM channel based on chatId");
-                // notFound(); // or redirect
                 determinedTitle = "Invalid DM";
             }
           }
         } else {
           determinedTitle = 'Direct Message'; // User not loaded yet
         }
-        determinedResolvedChatId = chatId;
-      } else {
-        // For dynamic party chats
-        determinedTitle = `Party: ${chatId}`;
+        determinedResolvedChatId = resolvedChatId;
+      } else if (resolvedChatId) { // For dynamic party chats
+        determinedTitle = `Party: ${resolvedChatId}`;
         determinedType = 'party';
-        determinedResolvedChatId = chatId;
+        determinedResolvedChatId = resolvedChatId;
+      } else {
+        // Fallback or error if resolvedChatId is undefined/empty
+        determinedTitle = "Invalid Chat";
+        setIsLoading(false);
+        return;
       }
       
       setChatTitle(determinedTitle);
       setChatType(determinedType);
-      setResolvedChatId(determinedResolvedChatId);
       setIsLoading(false);
     };
 
-    // If it's a DM, we need currentUser to determine the other party.
-    // If currentUser is not yet available but it's a DM, wait.
-    if (chatId.startsWith('dm_') && !currentUser) {
-        // Still loading current user, can't determine DM partner yet
-        // Let the auth listener trigger a re-run of this effect
-        // Set a temp loading title
+    // If it's a DM and currentUser is not yet available, wait.
+    if (resolvedChatId && resolvedChatId.includes('dm_') && !currentUser) {
         setChatTitle('Loading DM...');
-        // setIsLoading is already true
     } else {
        setupChat();
     }
 
-  }, [chatId, currentUser]);
+  }, [resolvedChatId, currentUser]); // Depend on resolvedChatId state
 
   if (isLoading) {
     return (
@@ -121,7 +128,6 @@ export default function ChatPage({ params }: ChatPageParams) {
   }
   
   if (!chatTitle) {
-      // Handles cases where title couldn't be determined or user is not authorized
       return (
         <div className="flex justify-center items-center h-full">
           <p>Could not load chat information or access denied.</p>
