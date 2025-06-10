@@ -19,7 +19,7 @@
     },
     "usernames": {
       "$username": {
-        ".read": "auth != null",
+        ".read": true,
         ".write": "auth != null && newData.isString() && newData.val().length > 0",
         ".validate": "newData.isString() && newData.val().length > 10"
       }
