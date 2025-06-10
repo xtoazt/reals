@@ -140,6 +140,67 @@
     --nav-foreground: 200 15% 88%;
     --nav-border: 210 15% 25%;
   }
+
+  /* Palette 3: Forest Theme */
+  .forest-light {
+    --background: 40 30% 96%; /* Light Khaki/Beige */
+    --foreground: 30 25% 25%; /* Dark Brown */
+    --card: 45 35% 100%; /* Off-white card */
+    --card-foreground: 30 25% 25%;
+    --popover: 45 35% 100%;
+    --popover-foreground: 30 25% 25%;
+    --primary: 120 40% 45%;   /* Forest Green */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 90 30% 60%; /* Lighter, Muted Green */
+    --secondary-foreground: 90 25% 20%;
+    --muted: 40 25% 92%;
+    --muted-foreground: 35 20% 50%;
+    --accent: 35 60% 55%;    /* Muted Orange/Rust */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 40 20% 85%;
+    --input: 40 25% 90%;
+    --ring: 120 40% 40%;
+    --chart-1: 120 40% 45%;
+    --chart-2: 35 60% 55%;
+    --chart-3: 90 30% 60%;
+    --chart-4: 50 50% 50%; /* Earthy yellow/gold */
+    --chart-5: 25 40% 40%; /* Brown */
+    --nav-background: 40 30% 98%;
+    --nav-foreground: 30 25% 25%;
+    --nav-border: 40 20% 85%;
+  }
+
+  .forest-dark {
+    --background: 120 25% 12%; /* Dark Forest Green/Brown */
+    --foreground: 40 20% 88%;  /* Light Beige */
+    --card: 120 25% 15%;
+    --card-foreground: 40 20% 88%;
+    --popover: 120 25% 10%;
+    --popover-foreground: 40 20% 88%;
+    --primary: 130 50% 55%;   /* Brighter Green */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 100 20% 35%; /* Dark Muted Green */
+    --secondary-foreground: 100 15% 80%;
+    --muted: 120 15% 20%;
+    --muted-foreground: 40 15% 65%;
+    --accent: 40 70% 60%;    /* Amber */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 120 15% 25%;
+    --input: 120 20% 18%;
+    --ring: 130 50% 50%;
+    --chart-1: 130 50% 55%;
+    --chart-2: 40 70% 60%;
+    --chart-3: 100 20% 35%;
+    --chart-4: 55 60% 60%; /* Lighter Amber/Gold */
+    --chart-5: 30 30% 50%; /* Lighter Brown */
+    --nav-background: 120 25% 15%;
+    --nav-foreground: 40 20% 88%;
+    --nav-border: 120 15% 25%;
+  }
 }
 
 @layer base {

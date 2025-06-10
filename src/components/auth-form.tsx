@@ -92,7 +92,7 @@ export function AuthForm() {
       await signInWithEmailAndPassword(auth, emailForAuth, values.password);
       toast({
         title: 'Logged In!',
-        description: `Welcome back, ${values.username}!`, // Show original case username
+        description: `Welcome back, ${values.username}!`, 
       });
       router.push('/dashboard');
     } catch (error: any) {
@@ -118,7 +118,6 @@ export function AuthForm() {
     const lowerCaseUsername = values.username.toLowerCase();
     const emailForAuth = `${lowerCaseUsername}@${DUMMY_EMAIL_DOMAIN}`;
     
-    // Check if username already exists (using lowercase)
     const usernameNodeRef = ref(database, `usernames/${lowerCaseUsername}`);
     const usernameSnapshot = await get(usernameNodeRef);
     if (usernameSnapshot.exists()) {
@@ -136,28 +135,28 @@ export function AuthForm() {
       const user = userCredential.user;
 
       if (user) {
-        // Firebase Auth display name can be the original cased username
         await updateProfile(user, {
             displayName: values.username, 
         });
 
-        // Set user profile data in /users/{uid}
         const userProfileRef = ref(database, `users/${user.uid}`);
         const profileData: {
             uid: string;
-            username: string; // Store lowercase username for consistency
-            displayName: string; // Store original cased username for display
-            email: string; // Store derived email (based on lowercase username)
+            username: string; 
+            displayName: string; 
+            email: string; 
             nameColor?: string;
             title?: string;
             bio: string;
             avatar: string;
+            banner?: string;
         } = {
             uid: user.uid,
             username: lowerCaseUsername, 
             displayName: values.username, 
             email: emailForAuth, 
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
+            banner: `https://placehold.co/1200x300.png?text=Hello+${values.username}`,
             bio: "New user! Ready to chat.",
         };
 
@@ -166,16 +165,13 @@ export function AuthForm() {
             profileData.title = values.title || '';
         }
         await set(userProfileRef, profileData);
-
-        // Set username to UID mapping in /usernames/{username} (using lowercase username)
-        // const usernameMapRef = ref(database, `usernames/${lowerCaseUsername}`); // This was already `usernameNodeRef`
         await set(usernameNodeRef, user.uid);
 
         toast({
           title: 'Account Created!',
-          description: `Welcome, ${values.username}!`, // Show original case username
+          description: `Welcome, ${values.username}!`, 
         });
-        router.push('/dashboard');
+        router.push('/dashboard?showThemePicker=true'); // Redirect with query param
       } else {
         throw new Error("User creation failed post-auth.");
       }
@@ -201,7 +197,7 @@ export function AuthForm() {
 
 
   return (
-    <Card className="w-full max-w-md shadow-2xl">
+    <Card className="w-full max-w-md shadow-2xl z-10" style={{backgroundColor: 'var(--card)', color: 'var(--card-foreground)'}}>
       <CardHeader>
         <CardTitle className="text-3xl font-headline text-center">real.</CardTitle>
         <CardDescription className="text-center">

@@ -3,15 +3,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Users, Bot, PlusCircle } from "lucide-react";
+import { MessageSquare, Users, Bot } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { useEffect, useState, Suspense } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { auth, database } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
+import { useSearchParams, useRouter } from 'next/navigation';
+import { ThemeSelectionDialog } from "@/components/theme-selection-dialog";
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const [userName, setUserName] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [showThemeDialog, setShowThemeDialog] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -27,6 +32,15 @@ export default function DashboardPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('showThemePicker') === 'true') {
+      setShowThemeDialog(true);
+      // Remove the query parameter from the URL without reloading the page
+      const newPath = window.location.pathname; // Keep current path
+      router.replace(newPath, { scroll: false }); // Use replace to avoid adding to history
+    }
+  }, [searchParams, router]);
 
   return (
     <div className="space-y-8">
@@ -99,14 +113,17 @@ export default function DashboardPage() {
           </Card>
         </Link>
       </div>
-       {/* Placeholder for Create Party Dialog integration if needed directly on dashboard */}
-      {/* <CreatePartyDialog>
-        <Button variant="outline" size="lg" className="w-full md:w-auto">
-          <PlusCircle className="mr-2 h-5 w-5" /> Create New Party
-        </Button>
-      </CreatePartyDialog> */}
+      
+      {showThemeDialog && <ThemeSelectionDialog open={showThemeDialog} onOpenChange={setShowThemeDialog} />}
     </div>
   );
 }
 
-    
+export default function DashboardPage() {
+  return (
+    // Suspense is required by Next.js for pages that use useSearchParams
+    <Suspense fallback={<div>Loading...</div>}>
+      <DashboardPageContent />
+    </Suspense>
+  );
+}

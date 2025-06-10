@@ -8,21 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, ShieldCheck, Loader2, User as UserIcon, Users, Camera } from "lucide-react";
+import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update, get, off } from 'firebase/database';
-// Firebase Storage imports removed
 import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
   uid: string;
   username: string;
   displayName: string;
-  avatar: string; // Can be a URL (placehold.co) or a Data URI
-  banner?: string; // Can be a URL (placehold.co) or a Data URI
+  avatar: string; 
+  banner?: string; 
   bio: string;
   title?: string;
   nameColor?: string;
@@ -92,8 +91,18 @@ export default function ProfilePage() {
             setIsLoading(false);
           }).catch(error => {
             console.error("Error fetching friends count:", error);
-            if (data) {
-                setUserProfile({ ...data, uid: user.uid, banner: data.banner || "https://placehold.co/1200x300.png?text=Banner", friendsCount: 0 });
+            if (data) { // if profile data exists but friends fetch failed
+                setUserProfile({ 
+                    uid: user.uid,
+                    username: data.username || (user.email?.split('@')[0] || "User"),
+                    displayName: data.displayName || user.displayName || "User",
+                    avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
+                    banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
+                    bio: data.bio || "No bio yet.",
+                    title: data.title,
+                    nameColor: data.nameColor,
+                    friendsCount: 0 
+                });
                 setBioEdit(data.bio || "");
             }
             setIsLoading(false);
@@ -110,6 +119,10 @@ export default function ProfilePage() {
             friendsCount = Object.keys(snapshot.val()).length;
           }
           setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
+        }, (error) => {
+            console.error("Error listening to friends count:", error);
+            // Optionally set friendsCount to 0 or handle error
+             setUserProfile(prev => prev ? { ...prev, friendsCount: 0 } : null);
         });
 
         return () => {
@@ -158,8 +171,8 @@ export default function ProfilePage() {
             description: `${imageType === 'avatar' ? 'Avatar' : 'Banner'} image must be less than ${limit}. Please choose a smaller file or resize it.`,
             variant: "destructive",
         });
-        if (avatarInputRef.current) avatarInputRef.current.value = ""; // Reset file input
-        if (bannerInputRef.current) bannerInputRef.current.value = ""; // Reset file input
+        if (avatarInputRef.current) avatarInputRef.current.value = ""; 
+        if (bannerInputRef.current) bannerInputRef.current.value = ""; 
         return;
     }
 
@@ -187,7 +200,6 @@ export default function ProfilePage() {
       } finally {
         if (imageType === 'avatar') setIsUploadingAvatar(false);
         if (imageType === 'banner') setIsUploadingBanner(false);
-        // Reset file input value after processing
         if (avatarInputRef.current) avatarInputRef.current.value = "";
         if (bannerInputRef.current) bannerInputRef.current.value = "";
       }
@@ -267,7 +279,7 @@ export default function ProfilePage() {
             <div className="relative">
               <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
                 <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture" key={userProfile.avatar}/>
-                <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('') || userProfile.displayName.charAt(0)}</AvatarFallback>
               </Avatar>
               <Button 
                 variant="outline" 
@@ -287,7 +299,7 @@ export default function ProfilePage() {
               {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
                 <p className="text-sm text-accent font-semibold flex items-center justify-center md:justify-start">
-                  <ShieldCheck size={16} className="mr-1" /> {userProfile.title}
+                  {userProfile.title}
                 </p>
               )}
               {authEmail && <p className="text-xs text-muted-foreground/70">(Auth System Email: {authEmail})</p>}
@@ -335,7 +347,7 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput" className="flex items-center"><ShieldCheck size={14} className="mr-1 text-accent" />Title</Label>
+                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-accent opacity-70 mr-1 text-sm font-semibold">Title:</span></Label>
                   <Input id="titleInput" value={userProfile.title} disabled />
                 </div>
               )}

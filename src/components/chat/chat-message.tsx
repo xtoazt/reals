@@ -4,7 +4,7 @@
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, Shield } from 'lucide-react';
+import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -92,7 +92,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
   const handleProfileInteraction = () => {
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
-        if (message.senderUid !== 'ai-chatbot-uid') { // Don't show for self unless it's AI
+        if (message.senderUid !== 'ai-chatbot-uid') { 
              toast({ title: "Your Profile", description: "This is you!"});
         }
         return;
@@ -106,8 +106,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       title: (
         <div className="flex items-center">
             <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
-            {message.senderTitle && <Shield size={14} className="ml-1.5 mr-0.5 text-accent" />}
-            {message.senderTitle && <span className="text-xs text-accent font-normal">{message.senderTitle}</span>}
+            {message.senderTitle && <span className="ml-1.5 text-xs text-accent font-normal">{message.senderTitle}</span>}
         </div>
       ),
       description: `Display Name: ${message.sender}`,
@@ -163,7 +162,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 my-1 p-2.5 rounded-lg max-w-[85%] md:max-w-[75%]', // Adjusted padding and max-width
+        'flex items-start gap-3 my-1 p-2.5 rounded-lg max-w-[85%] md:max-w-[75%]',
         message.isOwnMessage ? 'ml-auto bg-primary/10' : 'mr-auto bg-card shadow-sm border'
       )}
     >
@@ -173,9 +172,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
-      <div className="flex-1 min-w-0"> {/* Added min-w-0 for better flex handling of long text */}
+      <div className="flex-1 min-w-0"> 
         <div className="flex items-center justify-between gap-2">
-           <div className="flex items-baseline gap-1 flex-wrap"> {/* Added flex-wrap for long names/titles */}
+           <div className="flex items-baseline gap-1 flex-wrap"> 
             <p
                 className={cn(
                   "text-xs font-semibold",
@@ -190,8 +189,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>
               )}
               {message.senderTitle && (
-                <p className="text-xs text-accent font-medium flex items-center shrink-0"> {/* Added shrink-0 */}
-                  <Shield size={12} className="mr-0.5"/>{message.senderTitle}
+                <p className="text-xs text-accent font-medium flex items-center shrink-0"> 
+                  {message.senderTitle}
                 </p>
               )}
            </div>
