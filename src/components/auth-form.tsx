@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -5,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Palette, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Palette, Sparkles, AtSign } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -21,10 +22,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
-  name: z.string().min(2, { message: 'Name must be at least 2 characters.' }).max(50),
+  email: z.string().email({ message: 'Please enter a valid email address.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
+  displayName: z.string().min(2, { message: 'Display name must be at least 2 characters.' }).max(50).optional(), // For display purposes, actual username/profile name
   specialCode: z.string().optional(),
-  nameColor: z.string().optional(),
+  nameColor: z.string().optional(), // Hex color
   title: z.string().optional(),
 });
 
@@ -37,10 +39,11 @@ export function AuthForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: '',
+      email: '',
       password: '',
+      displayName: '',
       specialCode: '',
-      nameColor: '#000000', // Default color
+      nameColor: '#FFA500', // Default to a theme orange
       title: '',
     },
   });
@@ -59,22 +62,29 @@ export function AuthForm() {
     }
   }, [watchSpecialCode, toast]);
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // Mock authentication/profile creation
-    console.log(values);
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    // TODO: Implement Firebase Authentication and Profile Creation here
+    // 1. Create user with email and password using Firebase Auth:
+    //    `createUserWithEmailAndPassword(auth, values.email, values.password)`
+    // 2. If successful, get the user (userCredential.user).
+    // 3. Store additional profile information (displayName, nameColor, title) in Firebase Realtime Database or Firestore
+    //    under a path like `/users/${user.uid}`.
+    //    Example: `set(ref(database, 'users/' + user.uid), { displayName: values.displayName || values.email.split('@')[0], email: values.email, nameColor: values.nameColor, title: values.title });`
+
+    console.log('Form values:', values);
     toast({
       title: 'Welcome!',
-      description: `Successfully logged in as ${values.name}.`,
+      description: `Logged in with ${values.email}. Profile setup would occur here.`,
     });
-    // In a real app, you'd handle auth here and then redirect.
-    // For this UI-only app, we'll simulate success and redirect.
+    // For now, redirect to dashboard.
+    // In a real app, ensure auth state is managed (e.g., via Firebase onAuthStateChanged) before redirecting.
     router.push('/dashboard');
   }
 
   return (
     <Card className="w-full max-w-md shadow-2xl">
       <CardHeader>
-        <CardTitle className="text-3xl font-headline text-center">RealTalk</CardTitle>
+        <CardTitle className="text-3xl font-headline text-center">real.</CardTitle>
         <CardDescription className="text-center">
           Enter your details to join or log in.
         </CardDescription>
@@ -84,12 +94,25 @@ export function AuthForm() {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="name"
+              name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel className="flex items-center"><AtSign size={16} className="mr-2 opacity-70"/>Email Address</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your name" {...field} />
+                    <Input type="email" placeholder="you@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+              control={form.control}
+              name="displayName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Display Name (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Your preferred display name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -164,7 +187,7 @@ export function AuthForm() {
                         <Sparkles size={18} className="mr-2" /> Custom Title
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your title" {...field} />
+                        <Input placeholder="Enter your title (e.g., Pro User)" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

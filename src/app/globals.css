@@ -2,29 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Removed: body { font-family: var(--font-inter), sans-serif; } as Inter is now globally linked and applied via font-body class */
-
 @layer base {
   :root {
-    --background: 0 0% 95%; /* #f2f2f2 */
-    --foreground: 240 10% 3.9%; /* Darker for better contrast on light bg */
+    --background: 0 0% 95%; /* #f2f2f2 - Light grey for overall background */
+    --foreground: 20 10% 10%; /* Darker for better contrast on light bg */
 
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 20 10% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --popover-foreground: 20 10% 10%;
 
-    --primary: 210 40% 60%; /* #6699CC */
+    --primary: 15 90% 55%; /* Vibrant Orange-Red */
     --primary-foreground: 0 0% 100%; /* White */
 
-    --secondary: 210 30% 90%; /* Lighter blue variant */
-    --secondary-foreground: 210 40% 30%; /* Darker blue for text */
+    --secondary: 35 90% 60%; /* Softer Orange/Gold */
+    --secondary-foreground: 20 30% 20%; /* Darker text for secondary */
 
     --muted: 0 0% 90%; /* Light grey for muted elements */
     --muted-foreground: 0 0% 45%; /* Mid grey for muted text */
 
-    --accent: 270 40% 60%; /* #9966CC */
+    --accent: 330 85% 60%; /* Strong Pink */
     --accent-foreground: 0 0% 100%; /* White */
 
     --destructive: 0 84.2% 60.2%;
@@ -32,62 +30,62 @@
 
     --border: 0 0% 85%; /* Slightly darker border */
     --input: 0 0% 90%; /* Input background */
-    --ring: 210 40% 50%; /* Ring color based on primary */
+    --ring: 15 90% 50%; /* Ring color based on new primary */
 
-    --chart-1: 210 40% 60%;
-    --chart-2: 270 40% 60%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 15 90% 55%; /* Primary */
+    --chart-2: 330 85% 60%; /* Accent */
+    --chart-3: 35 90% 60%; /* Secondary */
+    --chart-4: 200 80% 55%; /* A contrasting blue */
+    --chart-5: 120 60% 45%; /* A contrasting green */
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%; /* Slightly off-white for sidebar */
-    --sidebar-foreground: 240 10% 3.9%;
-    --sidebar-primary: 210 40% 60%;
+    --sidebar-foreground: 20 10% 10%;
+    --sidebar-primary: 15 90% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 270 40% 60%;
+    --sidebar-accent: 330 85% 60%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 0 0% 85%;
-    --sidebar-ring: 210 40% 50%;
+    --sidebar-ring: 15 90% 50%;
   }
 
   .dark {
-    --background: 240 10% 3.9%; /* Dark background */
+    --background: 20 10% 10%; /* Dark grey/brownish */
     --foreground: 0 0% 95%; /* Light foreground */
 
-    --card: 240 10% 3.9%;
+    --card: 20 10% 12%; /* Slightly lighter than bg */
     --card-foreground: 0 0% 95%;
 
-    --popover: 240 10% 3.9%;
+    --popover: 20 10% 8%; /* Darker popover */
     --popover-foreground: 0 0% 95%;
 
-    --primary: 210 40% 60%; /* Keep primary same for dark */
+    --primary: 15 85% 60%; /* Keep vibrant on dark, slightly lighter */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 30% 15%; /* Darker blue variant */
-    --secondary-foreground: 210 40% 80%; /* Lighter blue for text */
+    --secondary: 35 70% 45%; /* Darker secondary */
+    --secondary-foreground: 35 90% 85%; /* Lighter text for dark secondary */
 
     --muted: 0 0% 15%; /* Dark grey for muted */
     --muted-foreground: 0 0% 60%; /* Lighter grey for muted text */
 
-    --accent: 270 40% 60%; /* Keep accent same for dark */
+    --accent: 330 80% 65%; /* Keep accent vibrant on dark, slightly lighter */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 70% 45%; /* Adjusted destructive for dark */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 20%; /* Lighter border on dark */
+    --border: 0 0% 25%; /* Lighter border on dark */
     --input: 0 0% 20%; /* Input background */
-    --ring: 210 40% 70%; /* Lighter ring for dark */
+    --ring: 15 85% 55%; /* Lighter ring for dark */
     
-    --sidebar-background: 240 10% 6%; /* Darker sidebar */
+    --sidebar-background: 20 10% 12%; /* Darker sidebar */
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 210 40% 60%;
+    --sidebar-primary: 15 85% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 270 40% 60%;
+    --sidebar-accent: 330 80% 65%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-ring: 210 40% 70%;
+    --sidebar-border: 0 0% 25%;
+    --sidebar-ring: 15 85% 55%;
   }
 }
 

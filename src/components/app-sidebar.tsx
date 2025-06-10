@@ -24,7 +24,6 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
   { href: '/dashboard/chat/global', label: 'Global Chat', icon: MessageSquare, badge: '9+' },
   { href: '/dashboard/chat/ai-chatbot', label: 'AI Chatbot', icon: Bot },
-  // Create Party will be added as a separate item
   { href: '/dashboard/friends', label: 'Friends', icon: Users },
   { href: '/dashboard/profile', label: 'Profile', icon: UserCircle },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
@@ -40,7 +39,7 @@ export function AppSidebar() {
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
-          <h1 className="text-2xl font-bold font-headline">RealTalk</h1>
+          <h1 className="text-2xl font-bold font-headline">real.</h1>
         </Link>
          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-primary hidden group-data-[collapsible=icon]:block">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -68,7 +67,6 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuItem>
           ))}
-          {/* Create Party Dialog Trigger */}
           <SidebarMenuItem>
             <CreatePartyDialog>
                <SidebarMenuButton
@@ -88,7 +86,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 space-y-2">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-9 w-9">
-            <AvatarImage src="https://placehold.co/100x100.png" alt="User Avatar" data-ai-hint="user avatar" />
+            <AvatarImage src="https://placehold.co/100x100.png" alt="User Avatar" data-ai-hint="user avatar"/>
             <AvatarFallback>U</AvatarFallback>
           </Avatar>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
