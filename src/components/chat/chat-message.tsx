@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -28,29 +29,37 @@ export function ChatMessage({ message }: ChatMessageProps) {
     // Basic link detection and @mention highlighting
     const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
-      if (part.startsWith('@')) {
+      if (part.startsWith('@') && part.length > 1) { // Ensure @mention is not just '@'
         return (
           <span key={index} className="text-accent font-semibold cursor-pointer hover:underline">
             {part}
           </span>
         );
       }
-      if (/^(https|http):\/\/[^\s$.?#].[^\s]*$/.test(part)) {
-        return (
-          <a
-            key={index}
-            href={part}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline inline-flex items-center"
-          >
-            {part} <LinkIcon size={14} className="ml-1" />
-          </a>
-        );
+      if (/^(https?):\/\/[^\s$.?#].[^\s]*$/.test(part)) {
+        try {
+            const url = new URL(part); // Validate URL
+            return (
+              <a
+                key={index}
+                href={url.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center"
+              >
+                {part} <LinkIcon size={14} className="ml-1" />
+              </a>
+            );
+        } catch (e) {
+            // Not a valid URL, render as text
+            return part;
+        }
       }
       return part;
     });
   };
+
+  const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
 
   return (
     <div
@@ -61,8 +70,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
     >
       {!message.isOwnMessage && (
         <Avatar className="h-8 w-8">
-          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${message.sender.charAt(0)}`} alt={message.sender} data-ai-hint="profile avatar" />
-          <AvatarFallback>{message.sender.charAt(0)}</AvatarFallback>
+          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
+          <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
       <div className="flex-1">
@@ -94,29 +103,33 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {message.link.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{message.link.description}</p>}
           </a>
         )}
-        <div className="mt-2 flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full">
-            <Smile size={16} />
-          </Button>
-          {/* Mock reactions */}
-          {message.reactions?.['thumbsup'] && (
-            <div className="flex items-center bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
-              <ThumbsUp size={12} className="mr-1" /> {message.reactions['thumbsup']}
+        {/* Mock reactions for now, real reactions need DB integration */}
+        {(message.reactions && Object.keys(message.reactions).length > 0) && (
+             <div className="mt-2 flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full">
+                    <Smile size={16} />
+                </Button>
+                {message.reactions?.['thumbsup'] && (
+                    <div className="flex items-center bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
+                    <ThumbsUp size={12} className="mr-1" /> {message.reactions['thumbsup']}
+                    </div>
+                )}
+                {message.reactions?.['heart'] && (
+                    <div className="flex items-center bg-destructive/20 text-destructive text-xs px-2 py-0.5 rounded-full">
+                    <Heart size={12} className="mr-1" /> {message.reactions['heart']}
+                    </div>
+                )}
             </div>
-          )}
-          {message.reactions?.['heart'] && (
-            <div className="flex items-center bg-destructive/20 text-destructive text-xs px-2 py-0.5 rounded-full">
-              <Heart size={12} className="mr-1" /> {message.reactions['heart']}
-            </div>
-          )}
-        </div>
+        )}
       </div>
       {message.isOwnMessage && (
         <Avatar className="h-8 w-8">
-          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${message.sender.charAt(0)}`} alt={message.sender} data-ai-hint="profile avatar"/>
-          <AvatarFallback>{message.sender.charAt(0)}</AvatarFallback>
+          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar"/>
+          <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
     </div>
   );
 }
+
+    
