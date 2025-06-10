@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, ShieldCheck, Loader2, User as UserIcon, Users } from "lucide-react";
+import { Edit3, Palette, ShieldCheck, Loader2, User as UserIcon, Users, Camera } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, update, get } from 'firebase/database';
+import { ref, onValue, update, get, off } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
@@ -21,6 +21,7 @@ interface UserProfile {
   username: string;
   displayName: string;
   avatar: string;
+  banner?: string; // Added banner
   bio: string;
   title?: string;
   nameColor?: string;
@@ -40,7 +41,7 @@ export default function ProfilePage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email); 
+        setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
         const friendsRef = ref(database, `friends/${user.uid}`);
 
@@ -58,6 +59,7 @@ export default function ProfilePage() {
                 username: data.username || (user.email?.split('@')[0] || "User"),
                 displayName: data.displayName || user.displayName || "User",
                 avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
+                banner: data.banner || "https://placehold.co/1200x300.png",
                 bio: data.bio || "No bio yet.",
                 title: data.title,
                 nameColor: data.nameColor,
@@ -71,19 +73,18 @@ export default function ProfilePage() {
                     username: fallbackUsername,
                     displayName: user.displayName || fallbackUsername,
                     avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
+                    banner: "https://placehold.co/1200x300.png",
                     bio: "New user! Ready to chat.",
                     friendsCount: friendsCount,
                 };
                 setUserProfile(basicProfile);
                 setBioEdit(basicProfile.bio);
-                toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
             }
             setIsLoading(false);
           }).catch(error => {
             console.error("Error fetching friends count:", error);
-            // Still set profile data even if friends count fails
-             if (data) {
-                setUserProfile({ ...data, uid: user.uid, friendsCount: 0 });
+            if (data) {
+                setUserProfile({ ...data, uid: user.uid, banner: data.banner || "https://placehold.co/1200x300.png", friendsCount: 0 });
                 setBioEdit(data.bio || "");
             }
             setIsLoading(false);
@@ -94,7 +95,6 @@ export default function ProfilePage() {
             setIsLoading(false);
         });
         
-        // Listener for friends count changes
         const friendsListener = onValue(friendsRef, (snapshot) => {
           let friendsCount = 0;
           if (snapshot.exists()) {
@@ -120,8 +120,8 @@ export default function ProfilePage() {
 
 
   const handleBioEditToggle = () => {
-    if (isEditingBio && userProfile) {
-      const userProfileRef = ref(database, 'users/' + userProfile.uid);
+    if (isEditingBio && userProfile && currentUser) {
+      const userProfileRef = ref(database, 'users/' + currentUser.uid);
       update(userProfileRef, { bio: bioEdit })
         .then(() => {
           toast({ title: "Success", description: "Bio updated." });
@@ -132,6 +132,17 @@ export default function ProfilePage() {
         });
     }
     setIsEditingBio(!isEditingBio);
+  };
+
+  const handleChangeProfilePicture = () => {
+    // Mock functionality: In a real app, this would open a file dialog
+    // and handle image upload to Firebase Storage, then update userProfile.avatar
+    toast({ title: "Change Profile Picture", description: "Image upload functionality coming soon!" });
+  };
+
+  const handleChangeBanner = () => {
+    // Mock functionality
+    toast({ title: "Change Banner Image", description: "Banner upload functionality coming soon!" });
   };
 
   if (isLoading) {
@@ -154,15 +165,42 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden shadow-lg">
-        <div className="bg-muted h-32 md:h-40">
-          <Image src="https://placehold.co/1200x300.png" alt="Profile banner" width={1200} height={300} className="object-cover w-full h-full" data-ai-hint="abstract banner"/>
+        <div className="relative bg-muted h-32 md:h-48"> {/* Increased banner height */}
+          <Image 
+            src={userProfile.banner || "https://placehold.co/1200x300.png"} 
+            alt="Profile banner" 
+            layout="fill" 
+            objectFit="cover" 
+            className="w-full h-full" 
+            data-ai-hint="abstract banner"
+            key={userProfile.banner} // Add key to force re-render if banner URL changes
+          />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="absolute top-2 right-2 bg-background/70 hover:bg-background"
+            onClick={handleChangeBanner}
+          >
+            <Camera size={16} className="mr-2" /> Change Banner
+          </Button>
         </div>
         <CardContent className="p-6 pt-0">
           <div className="flex flex-col md:flex-row items-center md:items-end -mt-16 md:-mt-20 space-y-4 md:space-y-0 md:space-x-6">
-            <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
-              <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture"/>
-              <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
+                <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture" key={userProfile.avatar}/>
+                <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+              </Avatar>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+                onClick={handleChangeProfilePicture}
+              >
+                <Camera size={16} />
+                <span className="sr-only">Change profile picture</span>
+              </Button>
+            </div>
             <div className="flex-1 text-center md:text-left">
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {userProfile.displayName}
@@ -195,6 +233,7 @@ export default function ProfilePage() {
                     onChange={(e) => setBioEdit(e.target.value)}
                     placeholder="Tell us about yourself..."
                     className="min-h-[100px]"
+                    maxLength={1000}
                 />
             ) : (
                 <p className="text-muted-foreground text-sm whitespace-pre-wrap">{userProfile.bio || "No bio provided."}</p>

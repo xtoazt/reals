@@ -40,7 +40,7 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
               handleSend();
             }
           }}
-          placeholder={disabled ? "AI is thinking..." : "Type your message... Use @ to mention."}
+          placeholder={disabled ? "AI is thinking..." : "Type a message..."}
           className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm"
           rows={1}
           disabled={disabled}
@@ -74,10 +74,10 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
             <ImageIcon size={18} />
              <span className="sr-only">Upload Image</span>
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Attach file clicked (UI only)')} disabled={disabled}>
+          {/* <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Attach file clicked (UI only)')} disabled={disabled}>
             <Paperclip size={18} />
              <span className="sr-only">Attach File</span>
-          </Button>
+          </Button> */}
           <Button size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={handleSend} disabled={disabled || !message.trim()}>
             {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal size={18} />}
             <span className="sr-only">Send Message</span>

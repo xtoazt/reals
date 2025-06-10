@@ -7,7 +7,6 @@ import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCirc
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-// Input is no longer needed here as search bar is removed
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,8 +15,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; // For mobile menu
-import { ThemeToggle } from '@/components/theme-toggle';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
+// ThemeToggle is removed from here
 import { CreatePartyDialog } from './create-party-dialog';
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -120,7 +119,6 @@ export function TopNavBar() {
                 <PlusCircle className="h-5 w-5" /> Create Party
               </Button>
             </CreatePartyDialog>
-             {/* Profile and Settings are now part of navItems, so no need to duplicate here for mobile if navItems is used for mobile too */}
           </nav>
         </SheetContent>
       </Sheet>
@@ -135,10 +133,10 @@ export function TopNavBar() {
 
       {/* Desktop Tabs Navigation */}
       <nav className="hidden md:flex flex-1 items-center justify-center">
-        <Tabs value={pathname.startsWith('/dashboard/chat/') ? '/dashboard/chat/global' : pathname} className="w-auto"> {/* Adjusted value to handle dynamic chat routes better */}
+        <Tabs value={pathname.startsWith('/dashboard/chat/') ? pathname : (pathname.startsWith('/dashboard/friends') ? '/dashboard/friends' : (pathname.startsWith('/dashboard/profile') ? '/dashboard/profile' : (pathname.startsWith('/dashboard/settings') ? '/dashboard/settings' : pathname)))} className="w-auto">
           <TabsList>
             {navItems.map((item) => (
-              <TabsTrigger key={item.label} value={item.href === '/dashboard/chat/global' && pathname.startsWith('/dashboard/chat/') ? pathname : item.href} asChild>
+              <TabsTrigger key={item.label} value={item.href} asChild>
                 <Link href={item.href} className="flex items-center gap-1.5 px-3 py-1.5">
                   <item.icon className="h-4 w-4" /> {item.label}
                 </Link>
@@ -155,8 +153,7 @@ export function TopNavBar() {
       
       {/* Right side actions */}
       <div className="ml-auto flex items-center gap-2">
-        {/* Search bar removed from here */}
-        <ThemeToggle />
+        {/* ThemeToggle removed from here */}
         <Button variant="ghost" size="icon" className="rounded-full">
           <Bell className="h-5 w-5" />
           <span className="sr-only">Notifications</span>

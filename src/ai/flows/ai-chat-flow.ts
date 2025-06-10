@@ -46,6 +46,7 @@ const aiChatFlow = ai.defineFlow(
   async (input: AiChatInput) => {
     const {output} = await chatPrompt(input);
     if (!output) {
+        console.error("AI chat prompt did not return a valid output for input:", input);
         return { response: "I'm sorry, I couldn't generate a response at this moment. Please try again." };
     }
     return output;

@@ -1,5 +1,5 @@
 
-'use client'; // Add 'use client' as we'll need hooks for user data
+'use client'; 
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeToggle } from "@/components/theme-toggle"; // Import ThemeToggle
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
@@ -81,8 +81,8 @@ export default function SettingsPage() {
              <Label htmlFor="language">Language</Label>
             <select id="language" className="w-full p-2 border rounded-md bg-background">
                 <option>English (US)</option>
-                <option>Español (Not implemented)</option>
-                <option>Français (Not implemented)</option>
+                <option disabled>Español (Not implemented)</option>
+                <option disabled>Français (Not implemented)</option>
             </select>
             <p className="text-xs text-muted-foreground mt-1 flex items-center"><Languages className="mr-1 h-3 w-3" /> Select your preferred language.</p>
           </div>
@@ -118,7 +118,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <Label className="flex-1">Theme</Label>
-            <ThemeToggle />
+            <ThemeToggle /> {/* ThemeToggle moved here */}
           </div>
            <p className="text-xs text-muted-foreground">Choose between light, dark, or system default theme.</p>
         </CardContent>
@@ -133,9 +133,9 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between">
             <Label htmlFor="profile-visibility" className="flex-1">Profile Visibility</Label>
             <select id="profile-visibility" className="p-2 border rounded-md bg-background">
-                <option>Public (Not implemented)</option>
-                <option>Friends Only (Not implemented)</option>
-                <option>Private (Not implemented)</option>
+                <option disabled>Public (Not implemented)</option>
+                <option disabled>Friends Only (Not implemented)</option>
+                <option disabled>Private (Not implemented)</option>
             </select>
           </div>
            <p className="text-xs text-muted-foreground">Control who can see your profile information (feature coming soon).</p>
@@ -155,5 +155,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
