@@ -8,18 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, ShieldCheck, Copy, Loader2 } from "lucide-react";
+import { Edit3, Palette, ShieldCheck, Copy, Loader2, User as UserIcon } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update } from 'firebase/database';
-import { Textarea } from '@/components/ui/textarea'; // Added for bio editing
+import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
   uid: string;
-  name: string; // This will be displayName from Firebase Auth or DB
-  email: string;
+  username: string; 
+  displayName: string; 
   avatar: string;
   bio: string;
   title?: string;
@@ -33,19 +33,21 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioEdit, setBioEdit] = useState('');
+  const [authEmail, setAuthEmail] = useState<string | null>(null); // To store the Firebase Auth email
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
+        setAuthEmail(user.email); // Store the auth email
         const userProfileRef = ref(database, 'users/' + user.uid);
         onValue(userProfileRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
             setUserProfile({
               uid: user.uid,
-              name: data.displayName || user.displayName || "User",
-              email: data.email || user.email || "",
+              username: data.username || (user.email?.split('@')[0] || "User"), // Fallback to part of email if username not in DB
+              displayName: data.displayName || user.displayName || "User",
               avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
               bio: data.bio || "No bio yet.",
               title: data.title,
@@ -53,17 +55,21 @@ export default function ProfilePage() {
             });
             setBioEdit(data.bio || "");
           } else {
-             // Create a basic profile if none exists
+             // This case might occur if DB entry wasn't created properly during signup
+             // Or if a user exists in Auth but not in DB (e.g. old user)
+            const fallbackUsername = user.email?.split('@')[0] || "User";
             const basicProfile = {
                 uid: user.uid,
-                displayName: user.displayName || "User",
-                email: user.email || "",
+                username: fallbackUsername,
+                displayName: user.displayName || fallbackUsername,
                 avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
                 bio: "New user! Ready to chat.",
             };
-            update(ref(database, 'users/' + user.uid), basicProfile);
-            setUserProfile({ ...basicProfile, name: basicProfile.displayName });
+            // Attempt to create a basic profile if none exists, though signup should handle this.
+            // update(ref(database, 'users/' + user.uid), basicProfile); // Be cautious with auto-writes here
+            setUserProfile(basicProfile);
             setBioEdit(basicProfile.bio);
+            toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
           }
           setIsLoading(false);
         }, (error) => {
@@ -74,6 +80,7 @@ export default function ProfilePage() {
       } else {
         setCurrentUser(null);
         setUserProfile(null);
+        setAuthEmail(null);
         setIsLoading(false);
         // router.push('/auth'); // Consider redirecting if not authenticated
       }
@@ -129,19 +136,20 @@ export default function ProfilePage() {
         <CardContent className="p-6 pt-0">
           <div className="flex flex-col md:flex-row items-center md:items-end -mt-16 md:-mt-20 space-y-4 md:space-y-0 md:space-x-6">
             <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
-              <AvatarImage src={userProfile.avatar} alt={userProfile.name} data-ai-hint="profile picture"/>
-              <AvatarFallback className="text-4xl">{userProfile.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+              <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture"/>
+              <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
             </Avatar>
             <div className="flex-1 text-center md:text-left">
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
-                {userProfile.name}
+                {userProfile.displayName}
               </h1>
+              {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
                 <p className="text-sm text-accent font-semibold flex items-center justify-center md:justify-start">
                   <ShieldCheck size={16} className="mr-1" /> {userProfile.title}
                 </p>
               )}
-              <p className="text-muted-foreground">{userProfile.email}</p>
+               {authEmail && <p className="text-xs text-muted-foreground/70">(Auth: {authEmail})</p>}
             </div>
             {/* <Button variant="outline"><Edit3 className="mr-2 h-4 w-4" /> Edit Profile</Button> */}
           </div>
@@ -173,12 +181,13 @@ export default function ProfilePage() {
             <h3 className="text-lg font-semibold">Profile Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input id="displayName" value={userProfile.name} disabled />
+                <Label htmlFor="displayName" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
+                <Input id="displayName" value={userProfile.displayName} disabled />
               </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={userProfile.email} disabled />
+               <div>
+                <Label htmlFor="username" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
+                <Input id="username" value={userProfile.username} disabled />
+                 <p className="text-xs text-muted-foreground mt-1">Your unique username.</p>
               </div>
               <div>
                 <Label htmlFor="userId">User ID</Label>
@@ -188,7 +197,7 @@ export default function ProfilePage() {
                     <Copy size={16} />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Your unique ID for others to add you.</p>
+                <p className="text-xs text-muted-foreground mt-1">Your unique ID for system purposes.</p>
               </div>
                {userProfile.title && (
                 <div>
@@ -212,5 +221,4 @@ export default function ProfilePage() {
     </div>
   );
 }
-
     

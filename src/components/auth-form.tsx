@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Palette, Sparkles, AtSign, User } from 'lucide-react';
+import { Eye, EyeOff, Palette, Sparkles, User as UserIcon, KeyRound } from 'lucide-react'; // Changed AtSign to UserIcon
 
 import { Button } from '@/components/ui/button';
 import {
@@ -22,19 +22,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { auth, database } from '@/lib/firebase'; // Import Firebase auth and database
+import { auth, database } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { ref, set } from 'firebase/database';
 
+const DUMMY_EMAIL_DOMAIN = 'realtalk.users.app';
+
 const loginSchema = z.object({
-  email: z.string().email({ message: 'Please enter a valid email address.' }),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters.' }).max(30, { message: 'Username can be at most 30 characters.'}).regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
 });
 
 const signupSchema = z.object({
-  email: z.string().email({ message: 'Please enter a valid email address.' }),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters.' }).max(30, { message: 'Username can be at most 30 characters.'}).regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
-  displayName: z.string().min(2, { message: 'Display name must be at least 2 characters.' }).max(50),
   specialCode: z.string().optional(),
   nameColor: z.string().optional(), 
   title: z.string().optional(),
@@ -53,7 +54,7 @@ export function AuthForm() {
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
+      username: '',
       password: '',
     },
   });
@@ -61,9 +62,8 @@ export function AuthForm() {
   const signupForm = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      email: '',
+      username: '',
       password: '',
-      displayName: '',
       specialCode: '',
       nameColor: '#FFA500', 
       title: '',
@@ -86,18 +86,25 @@ export function AuthForm() {
 
   async function onLoginSubmit(values: z.infer<typeof loginSchema>) {
     setIsLoading(true);
+    const emailForAuth = `${values.username}@${DUMMY_EMAIL_DOMAIN}`;
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
+      await signInWithEmailAndPassword(auth, emailForAuth, values.password);
       toast({
         title: 'Logged In!',
-        description: `Welcome back!`,
+        description: `Welcome back, ${values.username}!`,
       });
       router.push('/dashboard');
     } catch (error: any) {
       console.error("Login error:", error);
+      let errorMessage = 'An unexpected error occurred.';
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        errorMessage = 'Invalid username or password.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       toast({
         title: 'Login Failed',
-        description: error.message || 'An unexpected error occurred.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -107,21 +114,22 @@ export function AuthForm() {
 
   async function onSignupSubmit(values: z.infer<typeof signupSchema>) {
     setIsLoading(true);
+    const emailForAuth = `${values.username}@${DUMMY_EMAIL_DOMAIN}`;
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, emailForAuth, values.password);
       const user = userCredential.user;
 
       if (user) {
         // Update Firebase Auth profile
         await updateProfile(user, {
-            displayName: values.displayName,
+            displayName: values.username, // Set displayName to the username
         });
 
         // Store additional profile information in Realtime Database
         const userProfileRef = ref(database, 'users/' + user.uid);
         const profileData: {
             uid: string;
-            email: string;
+            username: string;
             displayName: string;
             nameColor?: string;
             title?: string;
@@ -129,9 +137,9 @@ export function AuthForm() {
             avatar?: string;
         } = {
             uid: user.uid,
-            email: values.email,
-            displayName: values.displayName,
-            avatar: `https://placehold.co/128x128.png?text=${values.displayName.substring(0,2).toUpperCase()}`, // Placeholder avatar
+            username: values.username, // Store the original username
+            displayName: values.username, // Store displayName (initially same as username)
+            avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             bio: "New user! Ready to chat.",
         };
 
@@ -144,7 +152,7 @@ export function AuthForm() {
 
         toast({
           title: 'Account Created!',
-          description: `Welcome, ${values.displayName}!`,
+          description: `Welcome, ${values.username}!`,
         });
         router.push('/dashboard');
       } else {
@@ -152,9 +160,15 @@ export function AuthForm() {
       }
     } catch (error: any) {
       console.error("Signup error:", error);
+      let errorMessage = 'An unexpected error occurred.';
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'This username is already taken. Please choose another.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       toast({
         title: 'Signup Failed',
-        description: error.message || 'An unexpected error occurred.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -182,12 +196,12 @@ export function AuthForm() {
               <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-6">
                 <FormField
                   control={loginForm.control}
-                  name="email"
+                  name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center"><AtSign size={16} className="mr-2 opacity-70"/>Email Address</FormLabel>
+                      <FormLabel className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Username</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading} />
+                        <Input placeholder="Enter your username" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -198,7 +212,7 @@ export function AuthForm() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel className="flex items-center"><KeyRound size={16} className="mr-2 opacity-70"/>Password</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input
@@ -235,25 +249,12 @@ export function AuthForm() {
               <form onSubmit={signupForm.handleSubmit(onSignupSubmit)} className="space-y-6">
                 <FormField
                   control={signupForm.control}
-                  name="email"
+                  name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center"><AtSign size={16} className="mr-2 opacity-70"/>Email Address</FormLabel>
+                      <FormLabel  className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Username</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={signupForm.control}
-                  name="displayName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel  className="flex items-center"><User size={16} className="mr-2 opacity-70"/>Display Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Your preferred display name" {...field} disabled={isLoading} />
+                        <Input placeholder="Choose a username" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -264,7 +265,7 @@ export function AuthForm() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel className="flex items-center"><KeyRound size={16} className="mr-2 opacity-70"/>Password</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input
