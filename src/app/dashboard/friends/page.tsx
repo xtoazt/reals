@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
 import { auth, database } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { ref, onValue, off, set, remove, serverTimestamp, get, query, orderByChild, equalTo } from "firebase/database";
+import { ref, onValue, off, set, remove, serverTimestamp, get, query, update } from "firebase/database"; // Added update
 import Link from "next/link";
 
 interface FriendRequest {
@@ -103,6 +103,7 @@ export default function FriendsPage() {
       if (requestsData) {
         const loadedRequests: FriendRequest[] = [];
         for (const senderUid in requestsData) {
+          if (requestsData[senderUid]?.status !== 'pending') continue; // Only process pending requests
           const request = requestsData[senderUid];
           const senderProfile = await fetchUserProfile(senderUid);
           loadedRequests.push({
@@ -136,7 +137,6 @@ export default function FriendsPage() {
       if (friendsData) {
         const loadedFriends: Friend[] = [];
         for (const friendUid in friendsData) {
-          // const friendInfo = friendsData[friendUid]; // Contains { since: timestamp }
           const profile = await fetchUserProfile(friendUid);
           if (profile) {
             loadedFriends.push({
@@ -190,7 +190,6 @@ export default function FriendsPage() {
       
       const targetUid = snapshot.val();
 
-      // Check if already friends
       const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
       const friendSnapshot = await get(friendCheckRef);
       if(friendSnapshot.exists()){
@@ -200,7 +199,6 @@ export default function FriendsPage() {
         return;
       }
 
-      // Check if request already sent TO this user
       const sentRequestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       const sentSnapshot = await get(sentRequestRef);
       if(sentSnapshot.exists()){
@@ -209,7 +207,6 @@ export default function FriendsPage() {
          setFriendUsernameToAdd('');
          return;
       }
-      // Check if request already received FROM this user
       const receivedRequestRef = ref(database, `friend_requests/${currentUser.uid}/${targetUid}`);
       const receivedSnapshot = await get(receivedRequestRef);
       if(receivedSnapshot.exists()){
@@ -222,16 +219,16 @@ export default function FriendsPage() {
       const requestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       await set(requestRef, {
         senderUsername: currentUserProfile.username,
-        senderUid: currentUser.uid, // Added for clarity, though path has it
+        senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
-        status: "pending" // status might not be strictly needed if structure implies pending
+        status: "pending"
       });
 
       toast({ title: "Friend Request Sent", description: `Friend request sent to ${friendUsernameToAdd}.` });
       setFriendUsernameToAdd('');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending friend request:", error);
-      toast({ title: "Error", description: "Could not send friend request.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not send friend request: ${error.message}`, variant: "destructive" });
     } finally {
       setIsLoadingAddFriend(false);
     }
@@ -240,19 +237,19 @@ export default function FriendsPage() {
   const handleAcceptRequest = async (senderUid: string, senderUsername: string) => {
     if (!currentUser) return;
     try {
-      const currentUserFriendsRef = ref(database, `friends/${currentUser.uid}/${senderUid}`);
-      const senderFriendsRef = ref(database, `friends/${senderUid}/${currentUser.uid}`);
-      const requestToRemoveRef = ref(database, `friend_requests/${currentUser.uid}/${senderUid}`);
-
+      const updates: { [key: string]: any } = {};
       const friendData = { since: serverTimestamp() };
-      await set(currentUserFriendsRef, friendData);
-      await set(senderFriendsRef, friendData);
-      await remove(requestToRemoveRef);
+
+      updates[`/friends/${currentUser.uid}/${senderUid}`] = friendData;
+      updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData; // Reciprocal
+      updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; // Delete request
+
+      await update(ref(database), updates);
 
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${senderUsername}.`});
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error accepting friend request:", error);
-      toast({ title: "Error", description: "Could not accept friend request.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not accept friend request: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -262,33 +259,34 @@ export default function FriendsPage() {
       const requestToRemoveRef = ref(database, `friend_requests/${currentUser.uid}/${senderUid}`);
       await remove(requestToRemoveRef);
       toast({ title: "Friend Request Declined", description: `Friend request declined.`});
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error declining friend request:", error);
-      toast({ title: "Error", description: "Could not decline friend request.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not decline friend request: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleRemoveFriend = async (friendUid: string, friendUsername: string) => {
     if (!currentUser) return;
-    // Consider adding a confirmation dialog here in a real app
     try {
-      const currentUserFriendEntryRef = ref(database, `friends/${currentUser.uid}/${friendUid}`);
-      const otherUserFriendEntryRef = ref(database, `friends/${friendUid}/${currentUser.uid}`);
+      const updates: { [key: string]: any } = {};
+      updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
+      updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
 
-      await remove(currentUserFriendEntryRef);
-      await remove(otherUserFriendEntryRef);
+      await update(ref(database), updates);
 
       toast({ title: "Friend Removed", description: `You are no longer friends with ${friendUsername}.` });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error removing friend:", error);
-      toast({ title: "Error", description: "Could not remove friend.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not remove friend: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleViewProfile = (username: string) => {
-    toast({ title: "View Profile", description: `Clicked to view profile of @${username} (UI only).` });
-    // Future: router.push(`/dashboard/profile/${username}`);
+    // In a real app, this would navigate: router.push(`/dashboard/profile/${username}`);
+    // For now, it shows a toast.
+    toast({ title: "View Profile", description: `Functionality to view @${username}'s profile would go here.` });
   };
+
 
   return (
     <div className="space-y-6">
@@ -329,10 +327,6 @@ export default function FriendsPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Your Friends ({friends.length})</CardTitle>
-                {/* <div className="relative w-1/3">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search friends..." className="pl-8" />
-                </div> */}
               </div>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

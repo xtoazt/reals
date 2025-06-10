@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
 import { CreatePartyDialog } from './create-party-dialog';
+import { ThemeToggle } from '@/components/theme-toggle'; // Added ThemeToggle back
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
@@ -88,7 +89,7 @@ export function TopNavBar() {
   const getAvatarFallback = (name?: string) => {
     if (!name) return 'U';
     const parts = name.split(' ');
-    if (parts.length > 1) {
+    if (parts.length > 1 && parts[0] && parts[parts.length -1]) {
       return (parts[0][0] + parts[parts.length -1][0]).toUpperCase();
     }
     return name.substring(0, 1).toUpperCase();
@@ -102,15 +103,9 @@ export function TopNavBar() {
     }
     // Handle chat pages by matching the base
     if (pathname.startsWith('/dashboard/chat/')) {
-      // If it's a dynamic chat ID (not global or ai-chatbot), keep it dynamic or map to a general chat tab if desired
-      // For now, let's map any specific chat ID back to a generic chat tab or the specific one if it exists
       if (pathname === '/dashboard/chat/global') return '/dashboard/chat/global';
       if (pathname === '/dashboard/chat/ai-chatbot') return '/dashboard/chat/ai-chatbot';
-      // For other chat IDs like DMs or parties, you might not have a dedicated top tab.
-      // In this case, maybe no tab is active, or you fall back to a "general chat" tab if you had one.
-      // For now, if no specific chat tab matches, it will default to the dashboard or no active tab.
     }
-    // Fallback or more specific logic
     const currentBase = navItems.find(item => item.href !== '/dashboard' && pathname.startsWith(item.href));
     return currentBase ? currentBase.href : '/dashboard';
   };
@@ -174,6 +169,7 @@ export function TopNavBar() {
       </nav>
       
       <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle /> {/* ThemeToggle added back here */}
         <Button variant="ghost" size="icon" className="rounded-full">
           <Bell className="h-5 w-5" />
           <span className="sr-only">Notifications</span>

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle"; // Import ThemeToggle
+// import { ThemeToggle } from "@/components/theme-toggle"; // ThemeToggle removed from here
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
@@ -34,8 +34,6 @@ export default function SettingsPage() {
       } else {
         setCurrentUser(null);
         setUserUsername(null);
-        // Optionally redirect if not logged in
-        // router.push('/auth'); 
       }
     });
     return () => unsubscribe();
@@ -116,11 +114,10 @@ export default function SettingsPage() {
           <CardTitle className="text-xl flex items-center"><Palette className="mr-2 h-5 w-5 text-primary" />Appearance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="flex-1">Theme</Label>
-            <ThemeToggle /> {/* ThemeToggle moved here */}
-          </div>
-           <p className="text-xs text-muted-foreground">Choose between light, dark, or system default theme.</p>
+          <p className="text-sm text-muted-foreground">
+            You can change the application theme using the theme toggle button in the top navigation bar.
+          </p>
+          {/* ThemeToggle was here, now moved to TopNavBar */}
         </CardContent>
       </Card>
       
