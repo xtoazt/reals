@@ -1,60 +1,49 @@
-
 // Import the functions you need from the SDKs you need
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getDatabase } from 'firebase/database';
-// import { getFirestore } from "firebase/firestore";
-// import { getStorage } from "firebase/storage";
-// import { getAnalytics } from "firebase/analytics";
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getDatabase, type Database } from 'firebase/database';
+// We will dynamically import getAnalytics and isSupported for client-side only
+import type { Analytics } from 'firebase/analytics';
 
-// TODO: Add your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  // This apiKey was provided by you.
-  apiKey: "nq6KlkpPMIL3qMTriyGOq6hF4pSPVkuSJNzPhbNi",
-  // YOU MUST REPLACE THIS with your Firebase project's authDomain
-  authDomain: "YOUR_AUTH_DOMAIN",
-  // YOU MUST REPLACE THIS with your Firebase project's databaseURL
-  // Example: "https://your-project-id.firebaseio.com" or "https://your-project-id-default-rtdb.europe-west1.firebasedatabase.app"
-  databaseURL: "YOUR_DATABASE_URL",
-  // YOU MUST REPLACE THIS with your Firebase project's projectId
-  projectId: "YOUR_PROJECT_ID",
-  // YOU MUST REPLACE THIS with your Firebase project's storageBucket
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  // YOU MUST REPLACE THIS with your Firebase project's messagingSenderId
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  // YOU MUST REPLACE THIS with your Firebase project's appId
-  appId: "YOUR_APP_ID",
-  // This is optional, but if you use Analytics, REPLACE THIS with your measurementId
-  measurementId: "YOUR_MEASUREMENT_ID"
+  apiKey: "AIzaSyDtM1oZki3NTu9RrR6Nz4rwhkRP33cvnoE",
+  authDomain: "real-d5080.firebaseapp.com",
+  databaseURL: "https://real-d5080-default-rtdb.firebaseio.com",
+  projectId: "real-d5080",
+  storageBucket: "real-d5080.appspot.com", // Corrected from .firebasestorage.app
+  messagingSenderId: "100344000366",
+  appId: "1:100344000366:web:38ae4e6589a14259025b7f",
+  measurementId: "G-BPVVNZC439"
 };
 
-// Initialize Firebase
-let app;
+// Initialize Firebase App
+let app: FirebaseApp;
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
 } else {
   app = getApp();
 }
 
-const auth = getAuth(app);
-const database = getDatabase(app);
-// const firestore = getFirestore(app); // Uncomment if you want to use Firestore
-// const storage = getStorage(app); // Uncomment if you want to use Storage
-// const analytics = getAnalytics(app); // Uncomment if you want to use Analytics
+const authInstance: Auth = getAuth(app);
+const databaseInstance: Database = getDatabase(app);
+let analyticsInstance: Analytics | null = null;
 
-export { app, auth, database /*, firestore, storage, analytics */ };
+// Conditionally initialize Analytics only on the client side
+if (typeof window !== 'undefined') {
+  import('firebase/analytics').then(firebaseAnalytics => {
+    firebaseAnalytics.isSupported().then(supported => {
+      if (supported) {
+        analyticsInstance = firebaseAnalytics.getAnalytics(app);
+      }
+    }).catch(err => {
+        // It's good practice to log or handle the case where isSupported check fails
+        console.warn("Firebase Analytics isSupported check failed:", err);
+    });
+  }).catch(err => {
+    // Handle cases where the analytics module itself might fail to load
+    console.warn("Failed to load Firebase Analytics module:", err);
+  });
+}
 
-// HOW TO USE:
-// 1. Go to your Firebase project console (https://console.firebase.google.com/).
-// 2. In the project settings (gear icon -> Project settings -> General tab -> Your apps), find your web app's configuration object.
-// 3. Replace ALL the placeholder values above (YOUR_AUTH_DOMAIN, YOUR_DATABASE_URL, etc.) with your actual Firebase project credentials.
-// 4. Ensure your Realtime Database rules are set up correctly for development/production.
-//    For example, for starting out, you might use:
-//    {
-//      "rules": {
-//        ".read": "auth != null",
-//        ".write": "auth != null"
-//      }
-//    }
-//    BE SURE TO SECURE YOUR RULES BEFORE PRODUCTION.
+export { app, authInstance as auth, databaseInstance as database, analyticsInstance as analytics };
