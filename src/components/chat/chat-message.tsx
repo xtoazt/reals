@@ -4,19 +4,20 @@
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon } from 'lucide-react';
+import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
-import { auth, database } from '@/lib/firebase'; // Import database for friend request
-import { ref, set, get, serverTimestamp } from 'firebase/database'; // Import set and get
+import { auth, database } from '@/lib/firebase';
+import { ref, set, get, serverTimestamp } from 'firebase/database';
 
 export interface Message {
   id: string;
-  sender: string; // This is sender's displayName
+  sender: string; 
   senderUid?: string; 
-  senderUsername?: string; // Added to assist with friend requests
+  senderUsername?: string; 
   senderNameColor?: string; 
+  senderTitle?: string; // Added sender's title
   avatar?: string;
   content: string;
   timestamp: string;
@@ -45,7 +46,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
     }
 
     try {
-      // Check if already friends
       const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
       const friendSnapshot = await get(friendCheckRef);
       if(friendSnapshot.exists()){
@@ -53,14 +53,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
         return;
       }
 
-      // Check if request already sent TO this user
       const sentRequestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       const sentSnapshot = await get(sentRequestRef);
       if(sentSnapshot.exists()){
          toast({ title: "Request Already Sent", description: `You already sent a friend request to @${targetUsername}.`});
          return;
       }
-      // Check if request already received FROM this user
       const receivedRequestRef = ref(database, `friend_requests/${currentUser.uid}/${targetUid}`);
       const receivedSnapshot = await get(receivedRequestRef);
       if(receivedSnapshot.exists()){
@@ -71,10 +69,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
       const requestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       const currentUserProfileRef = ref(database, `users/${currentUser.uid}`);
       const currentUserProfileSnap = await get(currentUserProfileRef);
-      const currentUserUsername = currentUserProfileSnap.val()?.username || "A user";
+      const currentUserUsernameVal = currentUserProfileSnap.val()?.username || "A user";
 
       await set(requestRef, {
-        senderUsername: currentUserUsername, // The username of the person sending the request
+        senderUsername: currentUserUsernameVal, 
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
         status: "pending"
@@ -94,7 +92,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
     }
     
     toast({
-      title: `User: @${message.senderUsername}`,
+      title: (
+        <div className="flex items-center">
+            <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
+            {message.senderTitle && <Shield size={14} className="ml-1.5 mr-0.5 text-accent" />}
+            {message.senderTitle && <span className="text-xs text-accent font-normal">{message.senderTitle}</span>}
+        </div>
+      ),
       description: `Display Name: ${message.sender}`,
       action: (
         <div className="flex flex-col gap-2 mt-2">
@@ -135,7 +139,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </a>
             );
         } catch (e) {
-            return part; // if URL parsing fails, render as text
+            return part; 
         }
       }
       return part;
@@ -159,18 +163,26 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </Avatar>
       )}
       <div className="flex-1">
-        <div className="flex items-center justify-between">
-           <p 
-              className={cn(
-                "text-xs font-semibold",
-                message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
+        <div className="flex items-center justify-between gap-2">
+           <div className="flex items-baseline gap-1">
+            <p 
+                className={cn(
+                  "text-xs font-semibold",
+                  message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
+                )}
+                style={senderStyle}
+                onClick={!message.isOwnMessage ? handleProfileInteraction : undefined}
+              >
+                {message.sender}
+              </p>
+              {!message.isOwnMessage && message.senderUsername && <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>}
+              {message.senderTitle && (
+                <p className="text-xs text-accent font-medium flex items-center">
+                  <Shield size={12} className="mr-0.5"/>{message.senderTitle}
+                </p>
               )}
-              style={senderStyle}
-              onClick={!message.isOwnMessage ? handleProfileInteraction : undefined}
-            >
-              {message.sender} {!message.isOwnMessage && message.senderUsername && <span className="text-muted-foreground font-normal text-xs">(@{message.senderUsername})</span>}
-            </p>
-          <p className={cn("text-xs text-muted-foreground", message.isOwnMessage ? "ml-2" : "ml-auto")}>{message.timestamp}</p>
+           </div>
+          <p className={cn("text-xs text-muted-foreground flex-shrink-0", message.isOwnMessage ? "ml-2" : "")}>{message.timestamp}</p>
         </div>
         <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
           {renderContent()}

@@ -34,19 +34,19 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioEdit, setBioEdit] = useState('');
-  const [authEmail, setAuthEmail] = useState<string | null>(null); // Still useful for admin/debug
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email); // For display/debug, not for user interaction
+        setAuthEmail(user.email); 
         const userProfileRef = ref(database, 'users/' + user.uid);
-        
         const friendsRef = ref(database, `friends/${user.uid}`);
 
-        Promise.all([get(userProfileRef), get(friendsRef)]).then(([profileSnapshot, friendsSnapshot]) => {
-            const data = profileSnapshot.val();
+        const profileListener = onValue(userProfileRef, (profileSnapshot) => {
+          const data = profileSnapshot.val();
+          get(friendsRef).then(friendsSnapshot => {
             let friendsCount = 0;
             if (friendsSnapshot.exists()) {
                 friendsCount = Object.keys(friendsSnapshot.val()).length;
@@ -65,7 +65,6 @@ export default function ProfilePage() {
                 });
                 setBioEdit(data.bio || "");
             } else {
-                // This case should ideally not happen if signup creates a profile
                 const fallbackUsername = user.email?.split('@')[0] || "User";
                 const basicProfile: UserProfile = {
                     uid: user.uid,
@@ -80,11 +79,34 @@ export default function ProfilePage() {
                 toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
             }
             setIsLoading(false);
-        }).catch(error => {
-            console.error("Error fetching profile and friends count:", error);
+          }).catch(error => {
+            console.error("Error fetching friends count:", error);
+            // Still set profile data even if friends count fails
+             if (data) {
+                setUserProfile({ ...data, uid: user.uid, friendsCount: 0 });
+                setBioEdit(data.bio || "");
+            }
+            setIsLoading(false);
+          });
+        }, (error) => {
+            console.error("Error fetching profile data:", error);
             toast({ title: "Error", description: "Could not fetch profile data.", variant: "destructive"});
             setIsLoading(false);
         });
+        
+        // Listener for friends count changes
+        const friendsListener = onValue(friendsRef, (snapshot) => {
+          let friendsCount = 0;
+          if (snapshot.exists()) {
+            friendsCount = Object.keys(snapshot.val()).length;
+          }
+          setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
+        });
+
+        return () => {
+            off(userProfileRef, 'value', profileListener);
+            off(friendsRef, 'value', friendsListener);
+        };
 
       } else {
         setCurrentUser(null);

@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /* Palette 1: Warm (Default) */
+  :root { /* Light Warm */
     --background: 0 0% 95%; /* #f2f2f2 - Light grey for overall background */
     --foreground: 20 10% 10%; /* Darker for better contrast on light bg */
 
@@ -39,17 +40,13 @@
     --chart-5: 120 60% 45%; /* A contrasting green */
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%; /* Slightly off-white for sidebar */
-    --sidebar-foreground: 20 10% 10%;
-    --sidebar-primary: 15 90% 55%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 330 85% 60%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 85%;
-    --sidebar-ring: 15 90% 50%;
+    /* Sidebar/TopNav specific vars - can be simplified if TopNav uses card/bg */
+    --nav-background: 0 0% 98%;
+    --nav-foreground: 20 10% 10%;
+    --nav-border: 0 0% 85%;
   }
 
-  .dark {
+  .dark { /* Dark Warm */
     --background: 20 10% 10%; /* Dark grey/brownish */
     --foreground: 0 0% 95%; /* Light foreground */
 
@@ -78,14 +75,70 @@
     --input: 0 0% 20%; /* Input background */
     --ring: 15 85% 55%; /* Lighter ring for dark */
     
-    --sidebar-background: 20 10% 12%; /* Darker sidebar */
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 15 85% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 330 80% 65%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 25%;
-    --sidebar-ring: 15 85% 55%;
+    --nav-background: 20 10% 12%;
+    --nav-foreground: 0 0% 95%;
+    --nav-border: 0 0% 25%;
+  }
+
+  /* Palette 2: Oceanic Theme */
+  .oceanic-light {
+    --background: 200 30% 96%;
+    --foreground: 210 25% 25%;
+    --card: 200 30% 100%;
+    --card-foreground: 210 25% 25%;
+    --popover: 200 30% 100%;
+    --popover-foreground: 210 25% 25%;
+    --primary: 220 80% 55%;   /* Vibrant Blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 60% 60%; /* Purple */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 200 25% 92%;
+    --muted-foreground: 210 20% 50%;
+    --accent: 150 65% 45%;    /* Green */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 200 20% 85%;
+    --input: 200 25% 90%;
+    --ring: 220 80% 50%;
+    --chart-1: 220 80% 55%;
+    --chart-2: 150 65% 45%;
+    --chart-3: 270 60% 60%;
+    --chart-4: 45 90% 55%;
+    --chart-5: 0 80% 60%;
+    --nav-background: 200 30% 98%;
+    --nav-foreground: 210 25% 25%;
+    --nav-border: 200 20% 85%;
+  }
+
+  .oceanic-dark {
+    --background: 210 25% 12%;
+    --foreground: 200 15% 88%;
+    --card: 210 25% 15%;
+    --card-foreground: 200 15% 88%;
+    --popover: 210 25% 10%;
+    --popover-foreground: 200 15% 88%;
+    --primary: 220 70% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 50% 70%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 20% 20%;
+    --muted-foreground: 200 15% 65%;
+    --accent: 150 55% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 210 15% 25%;
+    --input: 210 20% 18%;
+    --ring: 220 70% 60%;
+    --chart-1: 220 70% 65%;
+    --chart-2: 150 55% 55%;
+    --chart-3: 270 50% 70%;
+    --chart-4: 45 80% 60%;
+    --chart-5: 0 70% 65%;
+    --nav-background: 210 25% 15%;
+    --nav-foreground: 200 15% 88%;
+    --nav-border: 210 15% 25%;
   }
 }
 

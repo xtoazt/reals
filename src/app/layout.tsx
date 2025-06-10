@@ -24,9 +24,10 @@ export default function RootLayout({
       <body className="font-body antialiased">
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark" // Changed default theme to dark
           enableSystem
           disableTransitionOnChange
+          themes={['light', 'dark', 'oceanic-light', 'oceanic-dark']}
         >
           {children}
           <Toaster />

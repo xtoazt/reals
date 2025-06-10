@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 interface ChatInterfaceProps {
   chatTitle: string;
   chatType: 'global' | 'party' | 'dm' | 'ai';
-  chatId?: string; // For party/DM, this would be the party/DM ID. For global, it's 'global'.
+  chatId?: string; 
 }
 
 interface UserProfileData {
@@ -26,6 +26,7 @@ interface UserProfileData {
   displayName: string;
   avatar?: string;
   nameColor?: string;
+  title?: string; // Added title
 }
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
@@ -83,7 +84,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             sender: 'AI Chatbot',
             senderUid: 'ai-chatbot-uid',
             senderUsername: 'ai_chatbot',
-            avatar: 'https://placehold.co/40x40/8B5CF6/FFFFFF.png?text=AI',
+            avatar: 'https://placehold.co/40x40.png?text=AI',
             content: "Hello! I'm your AI Chatbot. How can I help you today?",
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
@@ -101,7 +102,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     }
 
     setIsLoadingMessages(true);
-    const chatPath = `chats/${chatId}`; // Covers global, party, dm
+    const chatPath = `chats/${chatId}`; 
     const messagesRefQuery = query(ref(database, chatPath), orderByChild('timestamp'), limitToLast(50));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
@@ -123,14 +124,18 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 isOwnMessage: senderUid === currentUser?.uid,
                 senderNameColor: profile?.nameColor || msgData.senderNameColor,
+                senderTitle: profile?.title || msgData.senderTitle, // Include title
             });
         });
         messagePromises.push(promise);
       });
 
       await Promise.all(messagePromises);
-      // Sort messages by timestamp again after all profiles are fetched, as promises might resolve out of order
-      loadedMessages.sort((a, b) => new Date(`1/1/1970 ${a.timestamp}`).getTime() - new Date(`1/1/1970 ${b.timestamp}`).getTime());
+      loadedMessages.sort((a, b) => {
+        const timeA = new Date(0); timeA.setHours(parseInt(a.timestamp.split(':')[0]), parseInt(a.timestamp.split(':')[1]));
+        const timeB = new Date(0); timeB.setHours(parseInt(b.timestamp.split(':')[0]), parseInt(b.timestamp.split(':')[1]));
+        return timeA.getTime() - timeB.getTime();
+      });
       setMessages(loadedMessages);
       setIsLoadingMessages(false);
     }, (error) => {
@@ -170,6 +175,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: true,
             senderNameColor: currentUserProfile.nameColor,
+            senderTitle: currentUserProfile.title,
         };
         setMessages(prev => [...prev, userMessage]);
         setTimeout(() => {
@@ -178,7 +184,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 sender: 'AI Chatbot',
                 senderUid: 'ai-chatbot-uid',
                 senderUsername: 'ai_chatbot',
-                avatar: 'https://placehold.co/40x40/8B5CF6/FFFFFF.png?text=AI',
+                avatar: 'https://placehold.co/40x40.png?text=AI',
                 content: "I'm processing your request... (mock response for AI chat)",
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 isOwnMessage: false,
@@ -194,10 +200,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
 
     const newMessagePayload = {
       senderUid: currentUserProfile.uid,
-      senderName: currentUserProfile.displayName, // Storing displayName for quick fetch
-      senderUsername: currentUserProfile.username, // Storing username for quick fetch
+      senderName: currentUserProfile.displayName, 
+      senderUsername: currentUserProfile.username, 
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
       senderNameColor: currentUserProfile.nameColor, 
+      senderTitle: currentUserProfile.title, // Include title
       content,
       timestamp: serverTimestamp(),
     };

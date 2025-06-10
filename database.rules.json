@@ -3,13 +3,13 @@
   "rules": {
     "users": {
       "$uid": {
-        ".read": "auth != null", // Any authenticated user can read public profile info
-        ".write": "auth != null && auth.uid === $uid", // Only the user themselves can write
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio'])",
         "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
         "username": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
         "displayName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
-        "email": { ".validate": "newData.isString() && newData.val().length > 0" }, // Derived email
+        "email": { ".validate": "newData.isString() && newData.val().length > 0" },
         "avatar": { ".validate": "newData.isString()" },
         "bio": { ".validate": "newData.isString() && newData.val().length <= 1000" },
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
@@ -17,19 +17,16 @@
         "$other": { ".validate": false }
       }
     },
-    "usernames": { // For mapping usernames to UIDs
+    "usernames": {
       "$username": {
         ".read": "auth != null",
-        // Only allow writing when user is creating their profile, and the UID matches their auth.uid
-        // This is tricky to enforce perfectly without a Cloud Function for username registration,
-        // but we can ensure the value written is a UID.
-        ".write": "auth != null && newData.isString() && newData.val().length > 0", // Basic check, assumes client logic ensures correct UID
-        ".validate": "newData.isString() && newData.val().length > 10" // UIDs are typically longer
+        ".write": "auth != null && newData.isString() && newData.val().length > 0",
+        ".validate": "newData.isString() && newData.val().length > 10"
       }
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null", // For DMs/Parties, this should be more restrictive later
+        ".read": "auth != null",
         ".write": "auth != null",
         "$messageId": {
           ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
@@ -38,6 +35,7 @@
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
           "senderAvatar": { ".validate": "newData.isString()" },
           "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
+          "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
           "timestamp": { ".validate": "newData.val() === now" },
           "$other": { ".validate": false }
@@ -47,25 +45,21 @@
     "friend_requests": {
       "$receiver_uid": {
         "$sender_uid": {
-          // Receiver can read their requests. Sender can read the specific request they sent (for UI feedback, optional).
           ".read": "auth != null && (auth.uid === $receiver_uid || auth.uid === $sender_uid)",
-          // Sender can write (create) a request. Receiver can write (delete/update status - though we delete on accept/decline).
           ".write": "auth != null && (auth.uid === $sender_uid || auth.uid === $receiver_uid)",
           ".validate": "newData.hasChildren(['senderUsername', 'senderUid', 'timestamp', 'status']) && newData.child('senderUid').val() === $sender_uid",
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0" },
           "senderUid": { ".validate": "newData.isString() && newData.val() === $sender_uid" },
-          "timestamp": { ".validate": "newData.val() === now || newData.isNumber()" }, // Allow existing number for updates, now for creation
-          "status": { ".validate": "newData.isString() && (newData.val() === 'pending')" }, // Only allow 'pending' for new requests
+          "timestamp": { ".validate": "newData.val() === now || newData.isNumber()" },
+          "status": { ".validate": "newData.isString() && (newData.val() === 'pending')" },
           "$other": { ".validate": false }
         }
       }
     },
     "friends": {
       "$user_uid": {
-        // A user can read their own friends list
         ".read": "auth != null && auth.uid === $user_uid",
         "$friend_uid": {
-          // A user can write to their own friends list (add/remove)
           ".write": "auth != null && auth.uid === $user_uid",
           ".validate": "newData.hasChildren(['since'])",
           "since": {".validate": "newData.val() === now || newData.isNumber()"},
