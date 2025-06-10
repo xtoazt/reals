@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update, get, off } from 'firebase/database';
+import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
@@ -21,7 +22,7 @@ interface UserProfile {
   username: string;
   displayName: string;
   avatar: string;
-  banner?: string; // Added banner
+  banner?: string;
   bio: string;
   title?: string;
   nameColor?: string;
@@ -37,11 +38,16 @@ export default function ProfilePage() {
   const [bioEdit, setBioEdit] = useState('');
   const [authEmail, setAuthEmail] = useState<string | null>(null);
 
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email);
+        setAuthEmail(user.email); // This is the derived email like user@realtalk.users.app
         const userProfileRef = ref(database, 'users/' + user.uid);
         const friendsRef = ref(database, `friends/${user.uid}`);
 
@@ -59,21 +65,21 @@ export default function ProfilePage() {
                 username: data.username || (user.email?.split('@')[0] || "User"),
                 displayName: data.displayName || user.displayName || "User",
                 avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
-                banner: data.banner || "https://placehold.co/1200x300.png",
+                banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
                 bio: data.bio || "No bio yet.",
                 title: data.title,
                 nameColor: data.nameColor,
                 friendsCount: friendsCount,
                 });
                 setBioEdit(data.bio || "");
-            } else {
+            } else { // Fallback for new users if profile isn't instantly available (should be rare)
                 const fallbackUsername = user.email?.split('@')[0] || "User";
                 const basicProfile: UserProfile = {
                     uid: user.uid,
                     username: fallbackUsername,
                     displayName: user.displayName || fallbackUsername,
                     avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
-                    banner: "https://placehold.co/1200x300.png",
+                    banner: "https://placehold.co/1200x300.png?text=Banner",
                     bio: "New user! Ready to chat.",
                     friendsCount: friendsCount,
                 };
@@ -83,8 +89,8 @@ export default function ProfilePage() {
             setIsLoading(false);
           }).catch(error => {
             console.error("Error fetching friends count:", error);
-            if (data) {
-                setUserProfile({ ...data, uid: user.uid, banner: data.banner || "https://placehold.co/1200x300.png", friendsCount: 0 });
+            if (data) { // If profile data exists but friends fetch failed
+                setUserProfile({ ...data, uid: user.uid, banner: data.banner || "https://placehold.co/1200x300.png?text=Banner", friendsCount: 0 });
                 setBioEdit(data.bio || "");
             }
             setIsLoading(false);
@@ -95,6 +101,7 @@ export default function ProfilePage() {
             setIsLoading(false);
         });
         
+        // Listener for dynamic updates to friends count
         const friendsListener = onValue(friendsRef, (snapshot) => {
           let friendsCount = 0;
           if (snapshot.exists()) {
@@ -103,7 +110,7 @@ export default function ProfilePage() {
           setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
         });
 
-        return () => {
+        return () => { // Cleanup listeners
             off(userProfileRef, 'value', profileListener);
             off(friendsRef, 'value', friendsListener);
         };
@@ -134,16 +141,75 @@ export default function ProfilePage() {
     setIsEditingBio(!isEditingBio);
   };
 
-  const handleChangeProfilePicture = () => {
-    // Mock functionality: In a real app, this would open a file dialog
-    // and handle image upload to Firebase Storage, then update userProfile.avatar
-    toast({ title: "Change Profile Picture", description: "Image upload functionality coming soon!" });
+  const handleImageUpload = async (file: File, imageType: 'avatar' | 'banner') => {
+    if (!currentUser) {
+      toast({ title: "Error", description: "You must be logged in to upload images.", variant: "destructive" });
+      return;
+    }
+    if (!file) return;
+
+    if (imageType === 'avatar') setIsUploadingAvatar(true);
+    if (imageType === 'banner') setIsUploadingBanner(true);
+
+    const storage = getStorage();
+    const filePath = imageType === 'avatar' 
+      ? `user_avatars/${currentUser.uid}/${file.name}` 
+      : `user_banners/${currentUser.uid}/${file.name}`;
+    const fileStorageRef = storageRef(storage, filePath);
+
+    const uploadTask = uploadBytesResumable(fileStorageRef, file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        // Optional: handle progress
+        // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        // console.log('Upload is ' + progress + '% done');
+      },
+      (error) => {
+        console.error("Upload error:", error);
+        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+        if (imageType === 'avatar') setIsUploadingAvatar(false);
+        if (imageType === 'banner') setIsUploadingBanner(false);
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const userProfileRef = ref(database, 'users/' + currentUser.uid);
+          
+          if (imageType === 'avatar') {
+            await update(userProfileRef, { avatar: downloadURL });
+            setUserProfile(prev => prev ? { ...prev, avatar: downloadURL } : null);
+            toast({ title: "Success", description: "Profile picture updated." });
+          } else if (imageType === 'banner') {
+            await update(userProfileRef, { banner: downloadURL });
+            setUserProfile(prev => prev ? { ...prev, banner: downloadURL } : null);
+            toast({ title: "Success", description: "Banner image updated." });
+          }
+        } catch (error: any) {
+            console.error("Error updating profile with new image URL:", error);
+            toast({ title: "Update Failed", description: "Could not update profile with new image.", variant: "destructive" });
+        } finally {
+            if (imageType === 'avatar') setIsUploadingAvatar(false);
+            if (imageType === 'banner') setIsUploadingBanner(false);
+        }
+      }
+    );
   };
 
-  const handleChangeBanner = () => {
-    // Mock functionality
-    toast({ title: "Change Banner Image", description: "Banner upload functionality coming soon!" });
+  const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImageUpload(file, 'avatar');
+    }
   };
+
+  const handleBannerFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImageUpload(file, 'banner');
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -164,24 +230,30 @@ export default function ProfilePage() {
   
   return (
     <div className="space-y-6">
+      <input type="file" ref={avatarInputRef} onChange={handleAvatarFileChange} accept="image/*" style={{ display: 'none' }} />
+      <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
+
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-32 md:h-48"> {/* Increased banner height */}
+        <div className="relative bg-muted h-32 md:h-48">
           <Image 
-            src={userProfile.banner || "https://placehold.co/1200x300.png"} 
+            src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
             alt="Profile banner" 
             layout="fill" 
             objectFit="cover" 
             className="w-full h-full" 
             data-ai-hint="abstract banner"
-            key={userProfile.banner} // Add key to force re-render if banner URL changes
+            key={userProfile.banner} 
+            priority
           />
           <Button 
             variant="outline" 
             size="sm" 
             className="absolute top-2 right-2 bg-background/70 hover:bg-background"
-            onClick={handleChangeBanner}
+            onClick={() => bannerInputRef.current?.click()}
+            disabled={isUploadingBanner}
           >
-            <Camera size={16} className="mr-2" /> Change Banner
+            {isUploadingBanner ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Camera size={16} className="mr-2" />}
+            Change Banner
           </Button>
         </div>
         <CardContent className="p-6 pt-0">
@@ -195,9 +267,10 @@ export default function ProfilePage() {
                 variant="outline" 
                 size="icon" 
                 className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
-                onClick={handleChangeProfilePicture}
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={isUploadingAvatar}
               >
-                <Camera size={16} />
+                {isUploadingAvatar ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
