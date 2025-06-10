@@ -13,14 +13,15 @@ import { ref, set, get, serverTimestamp } from 'firebase/database';
 
 export interface Message {
   id: string;
-  sender: string; 
-  senderUid?: string; 
-  senderUsername?: string; 
-  senderNameColor?: string; 
-  senderTitle?: string; // Added sender's title
+  sender: string;
+  senderUid?: string;
+  senderUsername?: string;
+  senderNameColor?: string;
+  senderTitle?: string;
   avatar?: string;
   content: string;
-  timestamp: string;
+  timestamp: string; // Formatted display time
+  originalTimestamp?: number; // Raw timestamp for sorting
   isOwnMessage: boolean;
   reactions?: { [key: string]: number };
   imageUrl?: string;
@@ -32,13 +33,17 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
-  const { toast } = useToast(); 
+  const { toast } = useToast();
   const currentUser = auth.currentUser;
 
-  const handleAddFriendFromChat = async (targetUid: string, targetUsername: string) => {
-    if (!currentUser) {
+  const handleAddFriendFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
+    if (!currentUser || !currentUser.uid) {
       toast({ title: "Error", description: "You must be logged in to send friend requests.", variant: "destructive" });
       return;
+    }
+    if (!targetUid || !targetUsername) {
+        toast({ title: "Error", description: "Cannot identify user to add.", variant: "destructive" });
+        return;
     }
     if (currentUser.uid === targetUid) {
       toast({ title: "Info", description: "You cannot send a friend request to yourself." });
@@ -72,7 +77,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       const currentUserUsernameVal = currentUserProfileSnap.val()?.username || "A user";
 
       await set(requestRef, {
-        senderUsername: currentUserUsernameVal, 
+        senderUsername: currentUserUsernameVal,
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
         status: "pending"
@@ -87,10 +92,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
   const handleProfileInteraction = () => {
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
-        toast({ title: "Your Profile", description: "This is you!"});
+        if (message.senderUid !== 'ai-chatbot-uid') { // Don't show for self unless it's AI
+             toast({ title: "Your Profile", description: "This is you!"});
+        }
         return;
     }
-    
+    if (message.senderUid === 'ai-chatbot-uid') {
+        toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
+        return;
+    }
+
     toast({
       title: (
         <div className="flex items-center">
@@ -105,7 +116,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <Button variant="outline" size="sm" onClick={() => toast({ title: "View Profile", description: `Navigating to @${message.senderUsername}'s profile... (mock)` })}>
             <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid!, message.senderUsername!)}>
+          <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
             <UserPlus className="mr-2 h-4 w-4" /> Add Friend
           </Button>
         </div>
@@ -139,7 +150,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </a>
             );
         } catch (e) {
-            return part; 
+            return part;
         }
       }
       return part;
@@ -152,7 +163,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 my-2 p-2.5 rounded-lg max-w-[80%] md:max-w-[70%]',
+        'flex items-start gap-3 my-1 p-2.5 rounded-lg max-w-[85%] md:max-w-[75%]', // Adjusted padding and max-width
         message.isOwnMessage ? 'ml-auto bg-primary/10' : 'mr-auto bg-card shadow-sm border'
       )}
     >
@@ -162,10 +173,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
-      <div className="flex-1">
+      <div className="flex-1 min-w-0"> {/* Added min-w-0 for better flex handling of long text */}
         <div className="flex items-center justify-between gap-2">
-           <div className="flex items-baseline gap-1">
-            <p 
+           <div className="flex items-baseline gap-1 flex-wrap"> {/* Added flex-wrap for long names/titles */}
+            <p
                 className={cn(
                   "text-xs font-semibold",
                   message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
@@ -175,9 +186,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
               >
                 {message.sender}
               </p>
-              {!message.isOwnMessage && message.senderUsername && <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>}
+              {!message.isOwnMessage && message.senderUsername && message.senderUid !== 'ai-chatbot-uid' && (
+                <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>
+              )}
               {message.senderTitle && (
-                <p className="text-xs text-accent font-medium flex items-center">
+                <p className="text-xs text-accent font-medium flex items-center shrink-0"> {/* Added shrink-0 */}
                   <Shield size={12} className="mr-0.5"/>{message.senderTitle}
                 </p>
               )}

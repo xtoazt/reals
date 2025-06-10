@@ -13,11 +13,12 @@ import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
+import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
 
 interface ChatInterfaceProps {
   chatTitle: string;
   chatType: 'global' | 'party' | 'dm' | 'ai';
-  chatId?: string; 
+  chatId?: string;
 }
 
 interface UserProfileData {
@@ -26,7 +27,7 @@ interface UserProfileData {
   displayName: string;
   avatar?: string;
   nameColor?: string;
-  title?: string; // Added title
+  title?: string;
 }
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
@@ -34,13 +35,18 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const scrollAreaViewportRef = useRef<HTMLDivElement>(null); // Ref for the viewport
   const { toast } = useToast();
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
 
-
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
+    if (uid === 'ai-chatbot-uid') { // Handle AI user profile locally
+      const aiProfile = { uid, username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: 'https://placehold.co/40x40.png?text=AI', nameColor: '#8B5CF6' };
+      setUsersCache(prev => ({...prev, [uid]: aiProfile}));
+      return aiProfile;
+    }
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
@@ -57,7 +63,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     }
   }, [usersCache]);
 
-
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -67,76 +72,76 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         });
       } else {
         setCurrentUserProfile(null);
-        setMessages([]);
-        setIsLoadingMessages(false);
+        if (chatType !== 'ai') { // Don't clear AI messages on logout
+            setMessages([]);
+            setIsLoadingMessages(false);
+        }
       }
     });
     return () => unsubscribeAuth();
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, chatType]);
 
   useEffect(() => {
-    if (chatType === 'ai') { 
+    if (chatType === 'ai') {
       setIsLoadingMessages(false);
-      if (chatId === 'ai-chatbot' && messages.length === 0) { 
+      if (chatId === 'ai-chatbot' && messages.length === 0) {
         setMessages([
           {
             id: 'ai-welcome',
-            sender: 'AI Chatbot',
+            sender: 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
-            senderUsername: 'ai_chatbot',
+            senderUsername: 'realtalk_ai',
             avatar: 'https://placehold.co/40x40.png?text=AI',
             content: "Hello! I'm your AI Chatbot. How can I help you today?",
+            originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6' 
+            senderNameColor: '#8B5CF6'
           }
         ]);
       }
       return;
     }
 
-    if (!currentUser) { 
+    if (!currentUser) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
     }
 
     setIsLoadingMessages(true);
-    const chatPath = `chats/${chatId}`; 
+    const chatPath = `chats/${chatId}`;
     const messagesRefQuery = query(ref(database, chatPath), orderByChild('timestamp'), limitToLast(50));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
-      const loadedMessages: Message[] = [];
-      const messagePromises: Promise<void>[] = [];
-
+      const messageDataArray: { key: string, data: any }[] = [];
       snapshot.forEach((childSnapshot) => {
-        const msgData = childSnapshot.val();
+        messageDataArray.push({ key: childSnapshot.key!, data: childSnapshot.val() });
+      });
+
+      const loadedMessagesPromises = messageDataArray.map(async (msgEntry) => {
+        const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-
-        const promise = fetchUserProfile(senderUid).then(profile => {
-            loadedMessages.push({
-                id: childSnapshot.key!,
-                sender: profile?.displayName || msgData.senderName || "User",
-                senderUid: senderUid,
-                senderUsername: profile?.username || msgData.senderUsername || "user",
-                avatar: profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${(profile?.displayName || msgData.senderName || "U").charAt(0)}`,
-                content: msgData.content,
-                timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                isOwnMessage: senderUid === currentUser?.uid,
-                senderNameColor: profile?.nameColor || msgData.senderNameColor,
-                senderTitle: profile?.title || msgData.senderTitle, // Include title
-            });
-        });
-        messagePromises.push(promise);
+        const profile = await fetchUserProfile(senderUid);
+        return {
+            id: msgEntry.key!,
+            sender: profile?.displayName || msgData.senderName || "User",
+            senderUid: senderUid,
+            senderUsername: profile?.username || msgData.senderUsername || "user",
+            avatar: profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${(profile?.displayName || msgData.senderName || "U").charAt(0)}`,
+            content: msgData.content,
+            originalTimestamp: msgData.timestamp,
+            timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: senderUid === currentUser?.uid,
+            senderNameColor: profile?.nameColor || msgData.senderNameColor,
+            senderTitle: profile?.title || msgData.senderTitle,
+        };
       });
-
-      await Promise.all(messagePromises);
-      loadedMessages.sort((a, b) => {
-        const timeA = new Date(0); timeA.setHours(parseInt(a.timestamp.split(':')[0]), parseInt(a.timestamp.split(':')[1]));
-        const timeB = new Date(0); timeB.setHours(parseInt(b.timestamp.split(':')[0]), parseInt(b.timestamp.split(':')[1]));
-        return timeA.getTime() - timeB.getTime();
-      });
-      setMessages(loadedMessages);
+      
+      const resolvedMessages = await Promise.all(loadedMessagesPromises);
+      // Ensure correct order if Promise.all doesn't maintain it (though it should for the resulting array)
+      resolvedMessages.sort((a,b) => (a.originalTimestamp || 0) - (b.originalTimestamp || 0));
+      setMessages(resolvedMessages);
       setIsLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching messages:", error);
@@ -149,13 +154,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     };
   }, [currentUser, chatType, chatId, toast, fetchUserProfile]);
 
-
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (viewport) {
+    const viewport = scrollAreaViewportRef.current;
+    if (viewport) {
+      // Timeout helps ensure DOM is updated before scrolling
+      setTimeout(() => {
         viewport.scrollTop = viewport.scrollHeight;
-      }
+      }, 0);
     }
   }, [messages]);
 
@@ -164,6 +169,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
+
     if (chatType === 'ai') {
         const userMessage: Message = {
             id: String(Date.now()),
@@ -172,26 +178,55 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderUsername: currentUserProfile.username,
             avatar: currentUserProfile.avatar,
             content,
+            originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: true,
             senderNameColor: currentUserProfile.nameColor,
             senderTitle: currentUserProfile.title,
         };
         setMessages(prev => [...prev, userMessage]);
-        setTimeout(() => {
-            const aiResponse: Message = {
-                id: String(Date.now() + 1),
-                sender: 'AI Chatbot',
-                senderUid: 'ai-chatbot-uid',
-                senderUsername: 'ai_chatbot',
-                avatar: 'https://placehold.co/40x40.png?text=AI',
-                content: "I'm processing your request... (mock response for AI chat)",
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                isOwnMessage: false,
-                senderNameColor: '#8B5CF6'
-            };
-            setMessages(prev => [...prev, aiResponse]);
-        }, 1000);
+        setIsAiResponding(true);
+
+        try {
+          const aiResponsePayload: AiChatInput = { message: content };
+          const aiResult: AiChatOutput = await aiChat(aiResponsePayload);
+
+          const aiResponseMessage: Message = {
+            id: String(Date.now() + 1),
+            sender: 'RealTalk AI',
+            senderUid: 'ai-chatbot-uid',
+            senderUsername: 'realtalk_ai',
+            avatar: 'https://placehold.co/40x40.png?text=AI', // Placeholder
+            content: aiResult.response,
+            originalTimestamp: Date.now(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: false,
+            senderNameColor: '#8B5CF6'
+          };
+          setMessages(prev => [...prev, aiResponseMessage]);
+        } catch (error) {
+          console.error("Error calling AI chat flow:", error);
+          const errorMessage: Message = {
+            id: String(Date.now() + 1),
+            sender: 'RealTalk AI',
+            senderUid: 'ai-chatbot-uid',
+            senderUsername: 'realtalk_ai',
+            avatar: 'https://placehold.co/40x40.png?text=AI',
+            content: "Sorry, I encountered an error and could not get a response. Please try again.",
+            originalTimestamp: Date.now(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: false,
+            senderNameColor: '#8B5CF6'
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          toast({
+            title: "AI Error",
+            description: "Could not get a response from the AI.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsAiResponding(false);
+        }
         return;
     }
 
@@ -200,11 +235,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
 
     const newMessagePayload = {
       senderUid: currentUserProfile.uid,
-      senderName: currentUserProfile.displayName, 
-      senderUsername: currentUserProfile.username, 
+      senderName: currentUserProfile.displayName,
+      senderUsername: currentUserProfile.username,
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
-      senderNameColor: currentUserProfile.nameColor, 
-      senderTitle: currentUserProfile.title, // Include title
+      senderNameColor: currentUserProfile.nameColor,
+      senderTitle: currentUserProfile.title,
       content,
       timestamp: serverTimestamp(),
     };
@@ -246,14 +281,21 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             {chatType === 'global' && (
                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Chat info clicked (UI only)"})}><Info size={16} className="mr-2" /> Chat Info</DropdownMenuItem>
             )}
-            {chatType !== 'global' && chatType !== 'dm' && <DropdownMenuSeparator />}
+            {/* Conditional separator was here, removed for simplicity, can be re-added if menu items vary more wildly */}
+            <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Block user clicked (UI only)"})}><UserX size={16} className="mr-2" /> Block User (mock)</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         )}
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
-        <ScrollArea className="h-full" ref={scrollAreaRef}>
+        {/*
+          Assign the ref to the ScrollArea's Viewport component directly if possible,
+          or use querySelector as done in the useEffect.
+          For ShadCN, direct ref to viewport is not straightforward, so querySelector is okay.
+          The ref on ScrollArea itself is for the root element.
+        */}
+        <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef}>
           <div className="p-2 md:p-4 space-y-1 md:space-y-2">
             {isLoadingMessages ? (
               <div className="flex justify-center items-center h-full p-10">
@@ -273,7 +315,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         </ScrollArea>
       </CardContent>
       <CardFooter className="p-0">
-        <ChatInput onSendMessage={handleSendMessage} />
+        <ChatInput onSendMessage={handleSendMessage} disabled={chatType === 'ai' && isAiResponding} />
       </CardFooter>
     </Card>
   );

@@ -4,20 +4,21 @@
 import React, { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Paperclip, SmilePlus, SendHorizonal, Link as LinkIcon, Image as ImageIcon } from 'lucide-react';
+import { Paperclip, SmilePlus, SendHorizonal, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
+  disabled?: boolean;
 }
 
 const emojis = ['😀', '😂', '😍', '🤔', '😢', '🥳', '👍', '🙏'];
 
-export function ChatInput({ onSendMessage }: ChatInputProps) {
+export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
   const [message, setMessage] = useState('');
 
   const handleSend = () => {
-    if (message.trim()) {
+    if (message.trim() && !disabled) {
       onSendMessage(message);
       setMessage('');
     }
@@ -39,14 +40,15 @@ export function ChatInput({ onSendMessage }: ChatInputProps) {
               handleSend();
             }
           }}
-          placeholder="Type your message... Use @ to mention."
+          placeholder={disabled ? "AI is thinking..." : "Type your message... Use @ to mention."}
           className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm"
           rows={1}
+          disabled={disabled}
         />
         <div className="flex items-center gap-0.5">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary">
+              <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" disabled={disabled}>
                 <SmilePlus size={18} />
                  <span className="sr-only">Emoji</span>
               </Button>
@@ -67,21 +69,17 @@ export function ChatInput({ onSendMessage }: ChatInputProps) {
               </div>
             </PopoverContent>
           </Popover>
-          
-          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Image upload clicked (UI only)')}>
+
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Image upload clicked (UI only)')} disabled={disabled}>
             <ImageIcon size={18} />
              <span className="sr-only">Upload Image</span>
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Attach file clicked (UI only)')}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Attach file clicked (UI only)')} disabled={disabled}>
             <Paperclip size={18} />
              <span className="sr-only">Attach File</span>
           </Button>
-           {/* <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Add link clicked (UI only)')}>
-            <LinkIcon size={18} />
-            <span className="sr-only">Add Link</span>
-          </Button> */}
-          <Button size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={handleSend} disabled={!message.trim()}>
-            <SendHorizonal size={18} />
+          <Button size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={handleSend} disabled={disabled || !message.trim()}>
+            {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal size={18} />}
             <span className="sr-only">Send Message</span>
           </Button>
         </div>
