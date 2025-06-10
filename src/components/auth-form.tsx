@@ -65,7 +65,7 @@ export function AuthForm() {
       username: '',
       password: '',
       specialCode: '',
-      nameColor: '#FFA500',
+      nameColor: '#FFA500', 
       title: '',
     },
   });
@@ -86,12 +86,13 @@ export function AuthForm() {
 
   async function onLoginSubmit(values: z.infer<typeof loginSchema>) {
     setIsLoading(true);
-    const emailForAuth = `${values.username}@${DUMMY_EMAIL_DOMAIN}`;
+    const lowerCaseUsername = values.username.toLowerCase();
+    const emailForAuth = `${lowerCaseUsername}@${DUMMY_EMAIL_DOMAIN}`;
     try {
       await signInWithEmailAndPassword(auth, emailForAuth, values.password);
       toast({
         title: 'Logged In!',
-        description: `Welcome back, ${values.username}!`,
+        description: `Welcome back, ${values.username}!`, // Show original case username
       });
       router.push('/dashboard');
     } catch (error: any) {
@@ -114,11 +115,12 @@ export function AuthForm() {
 
   async function onSignupSubmit(values: z.infer<typeof signupSchema>) {
     setIsLoading(true);
-    const emailForAuth = `${values.username}@${DUMMY_EMAIL_DOMAIN}`;
+    const lowerCaseUsername = values.username.toLowerCase();
+    const emailForAuth = `${lowerCaseUsername}@${DUMMY_EMAIL_DOMAIN}`;
     
-    // Check if username already exists
-    const usernameRef = ref(database, `usernames/${values.username}`);
-    const usernameSnapshot = await get(usernameRef);
+    // Check if username already exists (using lowercase)
+    const usernameNodeRef = ref(database, `usernames/${lowerCaseUsername}`);
+    const usernameSnapshot = await get(usernameNodeRef);
     if (usernameSnapshot.exists()) {
       toast({
         title: 'Signup Failed',
@@ -134,43 +136,44 @@ export function AuthForm() {
       const user = userCredential.user;
 
       if (user) {
+        // Firebase Auth display name can be the original cased username
         await updateProfile(user, {
-            displayName: values.username, // Firebase Auth display name
+            displayName: values.username, 
         });
 
         // Set user profile data in /users/{uid}
         const userProfileRef = ref(database, `users/${user.uid}`);
         const profileData: {
             uid: string;
-            username: string;
-            displayName: string; // This will be the primary display name in app
-            email: string; // For Firebase Auth consistency and DB validation
+            username: string; // Store lowercase username for consistency
+            displayName: string; // Store original cased username for display
+            email: string; // Store derived email (based on lowercase username)
             nameColor?: string;
             title?: string;
             bio: string;
             avatar: string;
         } = {
             uid: user.uid,
-            username: values.username,
-            displayName: values.username,
+            username: lowerCaseUsername, 
+            displayName: values.username, 
             email: emailForAuth, 
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             bio: "New user! Ready to chat.",
         };
 
         if (showSpecialFields && values.specialCode === '1234') {
-            profileData.nameColor = values.nameColor || '#FFA500'; // Default to orange if color picker not used but code entered
+            profileData.nameColor = values.nameColor || '#FFA500'; 
             profileData.title = values.title || '';
         }
         await set(userProfileRef, profileData);
 
-        // Set username to UID mapping in /usernames/{username}
-        const usernameMapRef = ref(database, `usernames/${values.username}`);
-        await set(usernameMapRef, user.uid);
+        // Set username to UID mapping in /usernames/{username} (using lowercase username)
+        // const usernameMapRef = ref(database, `usernames/${lowerCaseUsername}`); // This was already `usernameNodeRef`
+        await set(usernameNodeRef, user.uid);
 
         toast({
           title: 'Account Created!',
-          description: `Welcome, ${values.username}!`,
+          description: `Welcome, ${values.username}!`, // Show original case username
         });
         router.push('/dashboard');
       } else {
@@ -180,7 +183,6 @@ export function AuthForm() {
       console.error("Signup error:", error);
       let errorMessage = 'An unexpected error occurred.';
       if (error.code === 'auth/email-already-in-use') {
-        // This means the dummy email (username@domain) is taken, which implies the username is taken if our username check above failed somehow or race condition
         errorMessage = 'This username is already taken. Please choose another.';
       } else if (error.code === 'auth/configuration-not-found') {
         errorMessage = 'Firebase authentication is not configured correctly. Please check your Firebase project settings.';
