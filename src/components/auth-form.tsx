@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { auth, database } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { ref, set } from 'firebase/database';
+import { ref, set, get } from 'firebase/database';
 
 const DUMMY_EMAIL_DOMAIN = 'realtalk.users.app';
 
@@ -115,40 +115,58 @@ export function AuthForm() {
   async function onSignupSubmit(values: z.infer<typeof signupSchema>) {
     setIsLoading(true);
     const emailForAuth = `${values.username}@${DUMMY_EMAIL_DOMAIN}`;
+    
+    // Check if username already exists
+    const usernameRef = ref(database, `usernames/${values.username}`);
+    const usernameSnapshot = await get(usernameRef);
+    if (usernameSnapshot.exists()) {
+      toast({
+        title: 'Signup Failed',
+        description: 'This username is already taken. Please choose another.',
+        variant: 'destructive',
+      });
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailForAuth, values.password);
       const user = userCredential.user;
 
       if (user) {
         await updateProfile(user, {
-            displayName: values.username,
+            displayName: values.username, // Firebase Auth display name
         });
 
-        const userProfileRef = ref(database, 'users/' + user.uid);
+        // Set user profile data in /users/{uid}
+        const userProfileRef = ref(database, `users/${user.uid}`);
         const profileData: {
             uid: string;
             username: string;
-            displayName: string;
+            displayName: string; // This will be the primary display name in app
             email: string; // For Firebase Auth consistency and DB validation
             nameColor?: string;
             title?: string;
-            bio?: string;
-            avatar?: string;
+            bio: string;
+            avatar: string;
         } = {
             uid: user.uid,
             username: values.username,
             displayName: values.username,
-            email: emailForAuth, // Store the derived email used for Auth
+            email: emailForAuth, 
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             bio: "New user! Ready to chat.",
         };
 
         if (showSpecialFields && values.specialCode === '1234') {
-            profileData.nameColor = values.nameColor || '#FFA500';
+            profileData.nameColor = values.nameColor || '#FFA500'; // Default to orange if color picker not used but code entered
             profileData.title = values.title || '';
         }
-
         await set(userProfileRef, profileData);
+
+        // Set username to UID mapping in /usernames/{username}
+        const usernameMapRef = ref(database, `usernames/${values.username}`);
+        await set(usernameMapRef, user.uid);
 
         toast({
           title: 'Account Created!',
@@ -156,12 +174,13 @@ export function AuthForm() {
         });
         router.push('/dashboard');
       } else {
-        throw new Error("User creation failed.");
+        throw new Error("User creation failed post-auth.");
       }
     } catch (error: any) {
       console.error("Signup error:", error);
       let errorMessage = 'An unexpected error occurred.';
       if (error.code === 'auth/email-already-in-use') {
+        // This means the dummy email (username@domain) is taken, which implies the username is taken if our username check above failed somehow or race condition
         errorMessage = 'This username is already taken. Please choose another.';
       } else if (error.code === 'auth/configuration-not-found') {
         errorMessage = 'Firebase authentication is not configured correctly. Please check your Firebase project settings.';
@@ -256,7 +275,7 @@ export function AuthForm() {
                     <FormItem>
                       <FormLabel  className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Choose a username" {...field} disabled={isLoading} />
+                        <Input placeholder="Choose a username (e.g. cool_user_123)" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

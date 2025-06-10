@@ -3,17 +3,20 @@
 
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button'; // Assuming Button is a client component
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
+import { auth, database } from '@/lib/firebase'; // Import database for friend request
+import { ref, set, get, serverTimestamp } from 'firebase/database'; // Import set and get
 
 export interface Message {
   id: string;
-  sender: string;
-  senderUid?: string; // Added for unique identification
-  senderNameColor?: string; // Added for custom name color
+  sender: string; // This is sender's displayName
+  senderUid?: string; 
+  senderUsername?: string; // Added to assist with friend requests
+  senderNameColor?: string; 
   avatar?: string;
   content: string;
   timestamp: string;
@@ -28,28 +31,77 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast(); 
+  const currentUser = auth.currentUser;
+
+  const handleAddFriendFromChat = async (targetUid: string, targetUsername: string) => {
+    if (!currentUser) {
+      toast({ title: "Error", description: "You must be logged in to send friend requests.", variant: "destructive" });
+      return;
+    }
+    if (currentUser.uid === targetUid) {
+      toast({ title: "Info", description: "You cannot send a friend request to yourself." });
+      return;
+    }
+
+    try {
+      // Check if already friends
+      const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
+      const friendSnapshot = await get(friendCheckRef);
+      if(friendSnapshot.exists()){
+        toast({ title: "Already Friends", description: `You are already friends with @${targetUsername}.`});
+        return;
+      }
+
+      // Check if request already sent TO this user
+      const sentRequestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
+      const sentSnapshot = await get(sentRequestRef);
+      if(sentSnapshot.exists()){
+         toast({ title: "Request Already Sent", description: `You already sent a friend request to @${targetUsername}.`});
+         return;
+      }
+      // Check if request already received FROM this user
+      const receivedRequestRef = ref(database, `friend_requests/${currentUser.uid}/${targetUid}`);
+      const receivedSnapshot = await get(receivedRequestRef);
+      if(receivedSnapshot.exists()){
+         toast({ title: "Check Requests", description: `@${targetUsername} has already sent you a friend request. Please check your incoming requests.`});
+         return;
+      }
+
+      const requestRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
+      const currentUserProfileRef = ref(database, `users/${currentUser.uid}`);
+      const currentUserProfileSnap = await get(currentUserProfileRef);
+      const currentUserUsername = currentUserProfileSnap.val()?.username || "A user";
+
+      await set(requestRef, {
+        senderUsername: currentUserUsername, // The username of the person sending the request
+        senderUid: currentUser.uid,
+        timestamp: serverTimestamp(),
+        status: "pending"
+      });
+      toast({ title: "Friend Request Sent", description: `Friend request sent to @${targetUsername}.` });
+    } catch (error) {
+      console.error("Error sending friend request from chat:", error);
+      toast({ title: "Error", description: "Could not send friend request.", variant: "destructive" });
+    }
+  };
+
 
   const handleProfileInteraction = () => {
-    if (message.isOwnMessage) { // Don't show options for own messages
+    if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
         toast({ title: "Your Profile", description: "This is you!"});
         return;
     }
-    if (!message.senderUid) {
-      toast({ title: "Info", description: `Viewing info for ${message.sender}. (User ID not available for further actions)`});
-      return;
-    }
-    // In a real app, you might open a modal or navigate to a profile page
-    // For now, we'll use toasts to simulate actions
+    
     toast({
-      title: `User: ${message.sender}`,
-      description: "What would you like to do?",
+      title: `User: @${message.senderUsername}`,
+      description: `Display Name: ${message.sender}`,
       action: (
         <div className="flex flex-col gap-2 mt-2">
-          <Button variant="outline" size="sm" onClick={() => toast({ title: "View Profile", description: `Navigating to ${message.sender}'s profile... (mock)` })}>
-            View Profile
+          <Button variant="outline" size="sm" onClick={() => toast({ title: "View Profile", description: `Navigating to @${message.senderUsername}'s profile... (mock)` })}>
+            <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
           </Button>
-          <Button variant="outline" size="sm" onClick={() => toast({ title: "Friend Request", description: `Sending friend request to ${message.sender}... (mock)` })}>
+          <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid!, message.senderUsername!)}>
             <UserPlus className="mr-2 h-4 w-4" /> Add Friend
           </Button>
         </div>
@@ -61,8 +113,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
     const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
       if (part.startsWith('@') && part.length > 1) {
+        const mentionedUsername = part.substring(1);
         return (
-          <span key={index} className="text-accent font-semibold cursor-pointer hover:underline">
+          <span key={index} className="text-accent font-semibold cursor-pointer hover:underline" onClick={() => toast({title: "Mention Clicked", description: `Viewing @${mentionedUsername}'s profile (mock)`})}>
             {part}
           </span>
         );
@@ -82,7 +135,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </a>
             );
         } catch (e) {
-            return part;
+            return part; // if URL parsing fails, render as text
         }
       }
       return part;
@@ -95,8 +148,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 my-3 p-3 rounded-lg max-w-[85%]',
-        message.isOwnMessage ? 'ml-auto bg-primary/10' : 'mr-auto bg-card shadow-sm'
+        'flex items-start gap-3 my-2 p-2.5 rounded-lg max-w-[80%] md:max-w-[70%]',
+        message.isOwnMessage ? 'ml-auto bg-primary/10' : 'mr-auto bg-card shadow-sm border'
       )}
     >
       {!message.isOwnMessage && (
@@ -107,23 +160,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
       )}
       <div className="flex-1">
         <div className="flex items-center justify-between">
-          {!message.isOwnMessage && (
-            <p 
-              className="text-sm font-semibold text-foreground/80 cursor-pointer hover:underline" 
+           <p 
+              className={cn(
+                "text-xs font-semibold",
+                message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
+              )}
               style={senderStyle}
-              onClick={handleProfileInteraction}
+              onClick={!message.isOwnMessage ? handleProfileInteraction : undefined}
             >
-              {message.sender}
+              {message.sender} {!message.isOwnMessage && message.senderUsername && <span className="text-muted-foreground font-normal text-xs">(@{message.senderUsername})</span>}
             </p>
-          )}
-           {message.isOwnMessage && ( // Display own name if it's own message, also with color
-            <p 
-              className="text-sm font-semibold" 
-              style={senderStyle}
-            >
-              {message.sender}
-            </p>
-          )}
           <p className={cn("text-xs text-muted-foreground", message.isOwnMessage ? "ml-2" : "ml-auto")}>{message.timestamp}</p>
         </div>
         <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
@@ -175,4 +221,3 @@ export function ChatMessage({ message }: ChatMessageProps) {
     </div>
   );
 }
-    

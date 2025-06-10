@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -27,8 +28,8 @@ export function ChatInput({ onSendMessage }: ChatInputProps) {
   };
 
   return (
-    <div className="p-4 border-t bg-card">
-      <div className="relative flex items-end gap-2">
+    <div className="p-2 md:p-3 border-t bg-card">
+      <div className="flex items-end gap-2">
         <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -39,14 +40,15 @@ export function ChatInput({ onSendMessage }: ChatInputProps) {
             }
           }}
           placeholder="Type your message... Use @ to mention."
-          className="flex-1 resize-none pr-20 min-h-[40px]"
+          className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm"
           rows={1}
         />
-        <div className="absolute right-2 bottom-2 flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <SmilePlus size={20} />
+              <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary">
+                <SmilePlus size={18} />
+                 <span className="sr-only">Emoji</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-2">
@@ -66,17 +68,21 @@ export function ChatInput({ onSendMessage }: ChatInputProps) {
             </PopoverContent>
           </Popover>
           
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Image upload clicked (UI only)')}>
-            <ImageIcon size={20} />
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Image upload clicked (UI only)')}>
+            <ImageIcon size={18} />
+             <span className="sr-only">Upload Image</span>
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Attach file clicked (UI only)')}>
-            <Paperclip size={20} />
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Attach file clicked (UI only)')}>
+            <Paperclip size={18} />
+             <span className="sr-only">Attach File</span>
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Add link clicked (UI only)')}>
-            <LinkIcon size={20} />
-          </Button>
-          <Button size="icon" className="h-8 w-8" onClick={handleSend} disabled={!message.trim()}>
-            <SendHorizonal size={20} />
+           {/* <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9 text-muted-foreground hover:text-primary" onClick={() => alert('Add link clicked (UI only)')}>
+            <LinkIcon size={18} />
+            <span className="sr-only">Add Link</span>
+          </Button> */}
+          <Button size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={handleSend} disabled={!message.trim()}>
+            <SendHorizonal size={18} />
+            <span className="sr-only">Send Message</span>
           </Button>
         </div>
       </div>

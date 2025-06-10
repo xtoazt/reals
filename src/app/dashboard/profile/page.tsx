@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, ShieldCheck, Copy, Loader2, User as UserIcon, Users } from "lucide-react";
+import { Edit3, Palette, ShieldCheck, Loader2, User as UserIcon, Users } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, update } from 'firebase/database';
+import { ref, onValue, update, get } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
 
 interface UserProfile {
@@ -24,7 +24,7 @@ interface UserProfile {
   bio: string;
   title?: string;
   nameColor?: string;
-  friendsCount?: number; // Added for mock display
+  friendsCount?: number;
 }
 
 export default function ProfilePage() {
@@ -34,48 +34,58 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioEdit, setBioEdit] = useState('');
-  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null); // Still useful for admin/debug
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setAuthEmail(user.email);
+        setAuthEmail(user.email); // For display/debug, not for user interaction
         const userProfileRef = ref(database, 'users/' + user.uid);
-        onValue(userProfileRef, (snapshot) => {
-          const data = snapshot.val();
-          if (data) {
-            setUserProfile({
-              uid: user.uid,
-              username: data.username || (user.email?.split('@')[0] || "User"),
-              displayName: data.displayName || user.displayName || "User",
-              avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
-              bio: data.bio || "No bio yet.",
-              title: data.title,
-              nameColor: data.nameColor,
-              friendsCount: data.friendsCount || Math.floor(Math.random() * 20), // Mock friend count
-            });
-            setBioEdit(data.bio || "");
-          } else {
-            const fallbackUsername = user.email?.split('@')[0] || "User";
-            const basicProfile: UserProfile = {
+        
+        const friendsRef = ref(database, `friends/${user.uid}`);
+
+        Promise.all([get(userProfileRef), get(friendsRef)]).then(([profileSnapshot, friendsSnapshot]) => {
+            const data = profileSnapshot.val();
+            let friendsCount = 0;
+            if (friendsSnapshot.exists()) {
+                friendsCount = Object.keys(friendsSnapshot.val()).length;
+            }
+
+            if (data) {
+                setUserProfile({
                 uid: user.uid,
-                username: fallbackUsername,
-                displayName: user.displayName || fallbackUsername,
-                avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
-                bio: "New user! Ready to chat.",
-                friendsCount: 0,
-            };
-            setUserProfile(basicProfile);
-            setBioEdit(basicProfile.bio);
-            toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
-          }
-          setIsLoading(false);
-        }, (error) => {
-            console.error("Error fetching profile:", error);
-            toast({ title: "Error", description: "Could not fetch profile.", variant: "destructive"});
+                username: data.username || (user.email?.split('@')[0] || "User"),
+                displayName: data.displayName || user.displayName || "User",
+                avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
+                bio: data.bio || "No bio yet.",
+                title: data.title,
+                nameColor: data.nameColor,
+                friendsCount: friendsCount,
+                });
+                setBioEdit(data.bio || "");
+            } else {
+                // This case should ideally not happen if signup creates a profile
+                const fallbackUsername = user.email?.split('@')[0] || "User";
+                const basicProfile: UserProfile = {
+                    uid: user.uid,
+                    username: fallbackUsername,
+                    displayName: user.displayName || fallbackUsername,
+                    avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
+                    bio: "New user! Ready to chat.",
+                    friendsCount: friendsCount,
+                };
+                setUserProfile(basicProfile);
+                setBioEdit(basicProfile.bio);
+                toast({ title: "Profile Incomplete", description: "Profile data might be partially loaded.", variant: "default"});
+            }
+            setIsLoading(false);
+        }).catch(error => {
+            console.error("Error fetching profile and friends count:", error);
+            toast({ title: "Error", description: "Could not fetch profile data.", variant: "destructive"});
             setIsLoading(false);
         });
+
       } else {
         setCurrentUser(null);
         setUserProfile(null);
@@ -86,12 +96,6 @@ export default function ProfilePage() {
     return () => unsubscribe();
   }, [toast]);
 
-  const handleCopyUserID = () => {
-    if (userProfile?.uid) {
-      navigator.clipboard.writeText(userProfile.uid);
-      toast({ title: "Copied!", description: "User ID copied to clipboard." });
-    }
-  };
 
   const handleBioEditToggle = () => {
     if (isEditingBio && userProfile) {
@@ -147,7 +151,7 @@ export default function ProfilePage() {
                   <ShieldCheck size={16} className="mr-1" /> {userProfile.title}
                 </p>
               )}
-              {authEmail && <p className="text-xs text-muted-foreground/70">(Auth: {authEmail})</p>}
+              {authEmail && <p className="text-xs text-muted-foreground/70">(Auth System Email: {authEmail})</p>}
               <div className="text-sm text-muted-foreground flex items-center justify-center md:justify-start mt-1">
                 <Users size={16} className="mr-1"/> Friends: {userProfile.friendsCount ?? 0}
               </div>
@@ -187,17 +191,7 @@ export default function ProfilePage() {
                <div>
                 <Label htmlFor="usernameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
                 <Input id="usernameInput" value={userProfile.username} disabled />
-                 <p className="text-xs text-muted-foreground mt-1">Your unique username.</p>
-              </div>
-              <div>
-                <Label htmlFor="userId">User ID</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="userId" value={userProfile.uid} disabled className="flex-1" />
-                  <Button variant="outline" size="icon" onClick={handleCopyUserID} aria-label="Copy User ID">
-                    <Copy size={16} />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Your unique system identifier. Not used for adding friends.</p>
+                 <p className="text-xs text-muted-foreground mt-1">Your unique username for friending and mentions.</p>
               </div>
                {userProfile.title && (
                 <div>
@@ -221,4 +215,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-    
