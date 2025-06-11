@@ -17,8 +17,15 @@ import {
 
 export function ThemeToggle() {
   const { setTheme, theme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  // useEffect only runs on the client, after the initial render
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const renderIcon = () => {
+    // This function will now only be called effectively when mounted is true
     if (theme?.includes('oceanic')) {
       return <Palette className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all" />;
     }
@@ -34,11 +41,20 @@ export function ThemeToggle() {
     );
   };
 
+  // Fallback Icon: This should match what the server renders based on defaultTheme="dark".
+  // The original renderIcon's default case handles this correctly.
+  const fallbackIcon = (
+    <>
+      <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    </>
+  );
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon">
-          {renderIcon()}
+          {mounted ? renderIcon() : fallbackIcon}
           <span className="sr-only">Toggle theme</span>
         </Button>
       </DropdownMenuTrigger>
