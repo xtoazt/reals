@@ -204,23 +204,23 @@
   }
 
   .text-shiny-gold {
-    font-weight: 700; /* bold */
+    font-weight: 700; 
     background: linear-gradient(
       90deg,
-      #BF953F, /* Dark Gold */
-      #FCF6BA, /* Light Gold */
-      #B38728, /* Medium Gold */
-      #FBF5B7, /* Light Yellow Gold */
-      #AA771C  /* Darker Gold */
+      #C0A060, /* Softer Dark Gold */
+      #F0E8C0, /* Softer Light Gold */
+      #B89040, /* Softer Medium Gold */
+      #E8E0B8, /* Softer Light Yellow Gold */
+      #B08030  /* Softer Darker Gold */
     );
-    background-size: 200% 100%; /* Make gradient wider than text for movement */
+    background-size: 400% 100%; /* Wider waves */
     -webkit-background-clip: text;
     -moz-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     -moz-text-fill-color: transparent;
-    text-fill-color: transparent; /* Standard property */
-    animation: shiny-gold-text-anim 3s linear infinite;
+    text-fill-color: transparent; 
+    animation: shiny-gold-text-anim 5s linear infinite; /* Slower animation */
   }
 
   @keyframes shiny-gold-text-anim {
