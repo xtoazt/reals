@@ -15,6 +15,8 @@ import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update, get, off } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
+import { useRouter } from 'next/navigation';
+
 
 interface UserProfile {
   uid: string;
@@ -33,6 +35,7 @@ const MAX_BANNER_SIZE_BYTES = 1 * 1024 * 1024; // 1MB
 
 export default function ProfilePage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,11 +90,17 @@ export default function ProfilePage() {
                 };
                 setUserProfile(basicProfile);
                 setBioEdit(basicProfile.bio);
+                 // If no data, implies a new user, redirect to create username if needed
+                if (!data?.username) {
+                  // router.push('/create-profile'); // Or some onboarding step
+                  console.log("User profile data not found, consider onboarding.");
+                }
             }
             setIsLoading(false);
           }).catch(error => {
             console.error("Error fetching friends count:", error);
-            if (data) { // if profile data exists but friends fetch failed
+            if (profileSnapshot.val()) { 
+                const data = profileSnapshot.val();
                 setUserProfile({ 
                     uid: user.uid,
                     username: data.username || (user.email?.split('@')[0] || "User"),
@@ -121,7 +130,6 @@ export default function ProfilePage() {
           setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
         }, (error) => {
             console.error("Error listening to friends count:", error);
-            // Optionally set friendsCount to 0 or handle error
              setUserProfile(prev => prev ? { ...prev, friendsCount: 0 } : null);
         });
 
@@ -135,10 +143,11 @@ export default function ProfilePage() {
         setUserProfile(null);
         setAuthEmail(null);
         setIsLoading(false);
+        router.push('/auth');
       }
     });
     return () => unsubscribe();
-  }, [toast]);
+  }, [toast, router]);
 
 
   const handleBioEditToggle = () => {
@@ -241,7 +250,7 @@ export default function ProfilePage() {
     return (
       <div className="flex flex-col justify-center items-center h-full space-y-4">
         <p className="text-xl">Please log in to view your profile.</p>
-        <Button onClick={() => window.location.href = '/auth'}>Go to Login</Button>
+        <Button onClick={() => router.push('/auth')}>Go to Login</Button>
       </div>
     );
   }
@@ -252,7 +261,7 @@ export default function ProfilePage() {
       <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
 
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-32 md:h-48">
+        <div className="relative bg-muted h-48 md:h-56"> {/* Increased banner height */}
           <Image 
             src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
             alt="Profile banner" 
@@ -292,7 +301,7 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left">
+            <div className="flex-1 text-center md:text-left pt-2 md:pt-0"> {/* Added pt-2 for mobile, ensured pt-0 for md */}
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {userProfile.displayName}
               </h1>

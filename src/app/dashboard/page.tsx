@@ -48,7 +48,7 @@ function DashboardPageContent() {
         <CardHeader>
           <CardTitle className="text-3xl font-headline">Welcome to real{userName ? `, ${userName}` : ''}!</CardTitle>
           <CardDescription>
-            This is your central hub. Connect, chat, and explore.
+            This is your central hub. connect fr.
           </CardDescription>
         </CardHeader>
         <CardContent>

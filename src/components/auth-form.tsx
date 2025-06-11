@@ -201,7 +201,7 @@ export function AuthForm() {
       <CardHeader>
         <CardTitle className="text-3xl font-headline text-center">real.</CardTitle>
         <CardDescription className="text-center">
-          Join or log in to connect.
+          Join or log in to connect fr.
         </CardDescription>
       </CardHeader>
       <CardContent>

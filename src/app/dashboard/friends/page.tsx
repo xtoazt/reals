@@ -193,7 +193,6 @@ export default function FriendsPage() {
       
       const targetUid = usernameSnapshot.val();
 
-      // Check if current user is blocked by target user
       const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
       const blockedByTargetSnap = await get(blockedByTargetRef);
       if (blockedByTargetSnap.exists()) {
@@ -202,7 +201,6 @@ export default function FriendsPage() {
         return;
       }
 
-      // Check if target user is blocked by current user
       const targetBlockedByMeRef = ref(database, `blocked_users/${currentUser.uid}/${targetUid}`);
       const targetBlockedByMeSnap = await get(targetBlockedByMeRef);
       if (targetBlockedByMeSnap.exists()) {
@@ -258,7 +256,6 @@ export default function FriendsPage() {
   const handleAcceptRequest = async (senderUid: string, senderUsername: string) => {
     if (!currentUser) return;
 
-    // Check for blocks before accepting
     const iBlockedSenderRef = ref(database, `blocked_users/${currentUser.uid}/${senderUid}`);
     const iBlockedSenderSnap = await get(iBlockedSenderRef);
     if (iBlockedSenderSnap.exists()) {
@@ -269,7 +266,6 @@ export default function FriendsPage() {
     const senderBlockedMeSnap = await get(senderBlockedMeRef);
     if (senderBlockedMeSnap.exists()) {
         toast({ title: "Cannot Accept", description: `${senderUsername} has blocked you.`, variant: "destructive" });
-        // Also remove the request as it's invalid
         const requestToRemoveRef = ref(database, `friend_requests/${currentUser.uid}/${senderUid}`);
         await remove(requestToRemoveRef);
         return;
@@ -312,7 +308,6 @@ export default function FriendsPage() {
         return;
     }
 
-    // Confirmation dialog might be good here in a real app
     toast({
         title: `Blocking ${friendUsername}`,
         description: "This will remove them as a friend and prevent further interaction.",
@@ -323,11 +318,9 @@ export default function FriendsPage() {
         updates[`/blocked_users/${currentUser.uid}/${friendUid}`] = true;
         updates[`/users_blocked_by/${friendUid}/${currentUser.uid}`] = true;
 
-        // Remove friendship
         updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
         updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
 
-        // Remove any pending friend requests between them
         updates[`/friend_requests/${currentUser.uid}/${friendUid}`] = null;
         updates[`/friend_requests/${friendUid}/${currentUser.uid}`] = null;
         
@@ -353,17 +346,14 @@ export default function FriendsPage() {
         
         await update(ref(database), updates);
         toast({ title: "User Unblocked", description: `You have unblocked ${userToUnblockUsername}.` });
-        // Note: This does not automatically re-friend them. They would need to send/accept a new request.
     } catch (error: any) {
         console.error("Error unblocking user:", error);
         toast({ title: "Error", description: `Could not unblock user: ${error.message}`, variant: "destructive" });
     }
   };
 
-
   const handleViewProfile = (username: string) => {
-    // router.push(`/dashboard/profile/${username}`); // If you implement dynamic profile pages
-    toast({ title: "View Profile", description: `Functionality to view @${username}'s profile would go here.` });
+    router.push(`/dashboard/profile/${username}`);
   };
 
 
@@ -372,7 +362,7 @@ export default function FriendsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Manage Friends</CardTitle>
-          <CardDescription>Connect with others on RealTalk by adding their username.</CardDescription>
+          <CardDescription>Connect with others on RealTalk. connect fr.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
@@ -424,7 +414,13 @@ export default function FriendsPage() {
                         <AvatarFallback>{friend.displayName.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                        <p className="font-semibold cursor-pointer hover:underline" style={{ color: friend.nameColor || 'hsl(var(--foreground))' }} onClick={() => handleViewProfile(friend.username)}>{friend.displayName}</p>
+                        <p 
+                            className="font-semibold cursor-pointer hover:underline" 
+                            style={{ color: friend.nameColor || 'hsl(var(--foreground))' }} 
+                            onClick={() => handleViewProfile(friend.username)}
+                        >
+                            {friend.displayName}
+                        </p>
                         <p className="text-xs text-muted-foreground">@{friend.username}</p>
                         <p className={`text-xs ${friend.status === 'Online' ? 'text-green-500' : 'text-muted-foreground'}`}>{friend.status}</p>
                         </div>
@@ -467,7 +463,13 @@ export default function FriendsPage() {
                         <AvatarFallback>{request.senderUsername.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium cursor-pointer hover:underline" style={{ color: request.senderNameColor || 'hsl(var(--foreground))' }} onClick={() => handleViewProfile(request.senderUsername)}>{request.senderUsername}</p>
+                        <p 
+                            className="font-medium cursor-pointer hover:underline" 
+                            style={{ color: request.senderNameColor || 'hsl(var(--foreground))' }} 
+                            onClick={() => handleViewProfile(request.senderUsername)}
+                        >
+                            {request.senderUsername}
+                        </p>
                         <p className="text-xs text-muted-foreground">wants to be your friend.</p>
                       </div>
                     </div>
@@ -482,21 +484,6 @@ export default function FriendsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      {/* Example of where a list of blocked users could go - For future enhancement */}
-      {/* <Card>
-        <CardHeader><CardTitle>Blocked Users</CardTitle></CardHeader>
-        <CardContent>
-            <p className="text-muted-foreground">Users you have blocked will appear here. (UI Mock)</p>
-            { mockBlockedUsers.map(user => (
-                <div key={user.id} className="flex items-center justify-between p-2 border-b">
-                    <p>{user.username}</p>
-                    <Button variant="outline" size="sm" onClick={() => handleUnblockUser(user.id, user.username)}>
-                        <ShieldOff className="mr-2 h-4 w-4" /> Unblock
-                    </Button>
-                </div>
-            ))}
-        </CardContent>
-      </Card> */}
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { ref, set, get, serverTimestamp, update, remove } from 'firebase/database';
 import type { User as FirebaseUser } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
+
 
 export interface Message {
   id: string;
@@ -37,6 +39,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message, showAvatarAndSender, isContinuation }: ChatMessageProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const currentUser = auth.currentUser;
 
   const handleAddFriendFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
@@ -145,10 +148,11 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
     }
   };
 
-  const handleProfileInteraction = () => {
+  const handleProfileInteraction = (username?: string) => {
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
         if (message.senderUid !== 'ai-chatbot-uid') { 
-             toast({ title: "Your Profile", description: "This is you!"});
+            if (currentUser?.uid === message.senderUid) router.push('/dashboard/profile'); // Navigate to own editable profile
+            else toast({ title: "User Info", description: "Cannot navigate to this user's profile."});
         }
         return;
     }
@@ -156,45 +160,49 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
         return;
     }
-
-    toast({
-      title: (
-        <div className="flex items-center">
-            <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
-            {message.senderTitle && <span className="ml-1.5 text-xs text-accent font-normal">{message.senderTitle}</span>}
-        </div>
-      ),
-      description: `Display Name: ${message.sender}`,
-      action: (
-        <div className="flex flex-col gap-2 mt-2">
-          <Button variant="outline" size="sm" onClick={() => toast({ title: "View Profile", description: `Navigating to @${message.senderUsername}'s profile... (mock)` })}>
-            <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
-            <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-          </Button>
-          <Button variant="destructive" size="sm" onClick={() => handleBlockUserFromChat(message.senderUid, message.senderUsername)}>
-            <UserX className="mr-2 h-4 w-4" /> Block User
-          </Button>
-        </div>
-      ),
-    });
+    
+    if (username) {
+        router.push(`/dashboard/profile/${username}`);
+    } else {
+         toast({
+          title: (
+            <div className="flex items-center">
+                <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
+                {message.senderTitle && <span className="ml-1.5 text-xs text-accent font-normal">{message.senderTitle}</span>}
+            </div>
+          ),
+          description: `Display Name: ${message.sender}. Click to view profile (mock).`,
+          action: (
+            <div className="flex flex-col gap-2 mt-2">
+              <Button variant="outline" size="sm" onClick={() => message.senderUsername ? router.push(`/dashboard/profile/${message.senderUsername}`) : toast({title: "Error", description: "Username not found."})}>
+                <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
+                <UserPlus className="mr-2 h-4 w-4" /> Add Friend
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => handleBlockUserFromChat(message.senderUid, message.senderUsername)}>
+                <UserX className="mr-2 h-4 w-4" /> Block User
+              </Button>
+            </div>
+          ),
+        });
+    }
   };
 
   const renderContent = () => {
-    const parts = message.content.split(/(\s+)/); // Keep spaces for rejoining
+    const parts = message.content.split(/(\s+)/); 
     return parts.map((part, index) => {
       if (part.startsWith('@') && part.length > 1) {
         const mentionedUsername = part.substring(1);
         return (
-          <span key={index} className="text-accent font-semibold cursor-pointer hover:underline" onClick={() => toast({title: "Mention Clicked", description: `Viewing @${mentionedUsername}'s profile (mock)`})}>
+          <span key={index} className="text-accent font-semibold cursor-pointer hover:underline" onClick={() => router.push(`/dashboard/profile/${mentionedUsername}`)}>
             {part}
           </span>
         );
       }
       if (/^(https?):\/\/[^\s$.?#].[^\s]*$/.test(part)) {
         try {
-            const url = new URL(part); // Validate if it's a real URL
+            const url = new URL(part); 
             return (
               <a
                 key={index}
@@ -207,7 +215,6 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
               </a>
             );
         } catch (e) {
-            // Not a valid URL, render as plain text
             return part;
         }
       }
@@ -221,23 +228,21 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   return (
     <div
       className={cn(
-        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group', // Added 'group' for hover effects
+        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group', 
         isContinuation ? 'mt-[2px]' : 'my-1', 
         message.isOwnMessage
           ? 'ml-auto bg-primary/10'
           : `mr-auto border ${showAvatarAndSender ? 'bg-card shadow-sm' : 'bg-card/95'}`,
-        // Indentation & padding for continued messages from others:
         !message.isOwnMessage && isContinuation 
-          ? 'ml-[calc(2rem+0.75rem)] pr-2.5 pb-1 pt-0.5 pl-2.5' // Original avatar (h-8=2rem) + gap-3 (0.75rem)
+          ? 'ml-[calc(2rem+0.75rem)] pr-2.5 pb-1 pt-0.5 pl-2.5' 
           : 'p-2.5',
-        // Padding for continued own messages
         message.isOwnMessage && isContinuation 
           ? 'pr-2.5 pb-1 pt-0.5 pl-2.5' 
           : '',
       )}
     >
       {!message.isOwnMessage && showAvatarAndSender && (
-        <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={handleProfileInteraction}>
+        <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={() => handleProfileInteraction(message.senderUsername)}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
@@ -252,7 +257,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
                   message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
                 )}
                 style={senderStyle}
-                onClick={!message.isOwnMessage ? handleProfileInteraction : undefined}
+                onClick={!message.isOwnMessage ? () => handleProfileInteraction(message.senderUsername) : undefined}
               >
                 {message.sender}
               </p>
@@ -275,7 +280,6 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
           {renderContent()}
         </div>
 
-        {/* Subtle timestamp for continued messages, appears on hover of the message group */}
         {isContinuation && (
           <div className="text-right opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out -mr-1">
             <p className="text-[10px] text-muted-foreground/70 mt-0.5">{message.timestamp}</p>
@@ -320,7 +324,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         )}
       </div>
       {message.isOwnMessage && showAvatarAndSender && (
-        <Avatar className="h-8 w-8 flex-shrink-0">
+        <Avatar className="h-8 w-8 flex-shrink-0" onClick={() => router.push('/dashboard/profile')}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar"/>
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>

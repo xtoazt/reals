@@ -6,7 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 
 export const metadata: Metadata = {
   title: 'real.',
-  description: 'Minimalist chat app with realtime messaging.',
+  description: 'connect fr',
 };
 
 export default function RootLayout({
