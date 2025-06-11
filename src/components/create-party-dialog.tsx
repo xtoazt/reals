@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,22 +18,31 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Users, PlusCircle } from 'lucide-react';
+import { Users, PlusCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { auth, database } from '@/lib/firebase';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { ref, onValue, get, off } from 'firebase/database';
 
-// Mock friends list (in a real app, this would come from state/API)
-const mockFriendsList = [
-  { id: '1', name: 'Alice Wonderland', avatar: 'https://placehold.co/40x40/E6A4B4/FFFFFF.png?text=A' },
-  { id: '2', name: 'Bob The Builder', avatar: 'https://placehold.co/40x40/A4B4E6/FFFFFF.png?text=B' },
-  { id: '3', name: 'Charlie Brown', avatar: 'https://placehold.co/40x40/E6D4A4/FFFFFF.png?text=C' },
-  { id: '5', name: 'Diana Prince', avatar: 'https://placehold.co/40x40/A4E6A4/FFFFFF.png?text=D' },
-  { id: '6', name: 'Edward Scissorhands', avatar: 'https://placehold.co/40x40/E6A4E6/FFFFFF.png?text=E' },
-  { id: '7', name: 'Fiona Apple', avatar: 'https://placehold.co/40x40/A4E6E6/FFFFFF.png?text=F' },
-];
+interface Friend {
+  id: string; // friend's UID
+  username: string;
+  displayName: string;
+  avatar?: string;
+  nameColor?: string;
+}
+
+interface UserProfileData {
+    uid: string;
+    username: string;
+    displayName: string;
+    avatar?: string;
+    nameColor?: string;
+}
 
 interface CreatePartyDialogProps {
-  children?: React.ReactNode; // For custom trigger
+  children?: React.ReactNode; 
 }
 
 export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
@@ -43,11 +52,83 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
   const { toast } = useToast();
   const router = useRouter();
 
-  // Effect to reset form when dialog closes
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [friendsList, setFriendsList] = useState<Friend[]>([]);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
+    if (usersCache[uid]) return usersCache[uid];
+    try {
+      const userRef = ref(database, `users/${uid}`);
+      const snapshot = await get(userRef);
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const profile = { uid, ...userData };
+        setUsersCache(prev => ({...prev, [uid]: profile}));
+        return profile;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      return null;
+    }
+  }, [usersCache]);
+
+  useEffect(() => {
+    if (!currentUser || !isOpen) {
+      if (!isOpen) { // Reset friends list if dialog is closed
+        setFriendsList([]);
+        setIsLoadingFriends(false);
+      }
+      return;
+    }
+
+    setIsLoadingFriends(true);
+    const friendsRef = ref(database, `friends/${currentUser.uid}`);
+    const listener = onValue(friendsRef, async (snapshot) => {
+      const friendsData = snapshot.val();
+      if (friendsData) {
+        const loadedFriends: Friend[] = [];
+        const friendUIDs = Object.keys(friendsData);
+        for (const friendUid of friendUIDs) {
+          const profile = await fetchUserProfile(friendUid);
+          if (profile) {
+            loadedFriends.push({
+              id: friendUid,
+              username: profile.username,
+              displayName: profile.displayName,
+              avatar: profile.avatar,
+              nameColor: profile.nameColor,
+            });
+          }
+        }
+        setFriendsList(loadedFriends);
+      } else {
+        setFriendsList([]);
+      }
+      setIsLoadingFriends(false);
+    }, (error) => {
+        console.error("Error fetching friends for party dialog:", error);
+        toast({title: "Error", description: "Could not load friends list.", variant: "destructive"});
+        setIsLoadingFriends(false);
+    });
+    return () => off(friendsRef, 'value', listener);
+  }, [currentUser, isOpen, fetchUserProfile, toast]);
+
+
   useEffect(() => {
     if (!isOpen) {
       setPartyName('');
       setSelectedFriends([]);
+      // usersCache can persist across dialog openings for efficiency, or be cleared too
     }
   }, [isOpen]);
 
@@ -70,16 +151,19 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
       return;
     }
 
-    const newPartyId = `party-${Date.now()}`;
+    // For now, just a toast. Actual party creation would involve:
+    // 1. Generating a unique partyId (e.g., `party-${Date.now()}` or a Firebase push key).
+    // 2. Creating a node in `/chats/{partyId}` with party info (name, members, etc.).
+    // 3. Potentially adding this party to a user's list of parties.
+    const newPartyId = `party-${partyName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
     console.log('Creating party:', { partyName, selectedFriends, newPartyId });
     toast({
-      title: 'Party Created!',
-      description: `"${partyName}" has been created with ${selectedFriends.length} friend(s).`,
+      title: 'Party Created (Mock)',
+      description: `"${partyName}" with ${selectedFriends.length} friend(s). ID: ${newPartyId}. Further implementation needed.`,
     });
     
     setIsOpen(false);
-    // Optionally navigate to the new chat
-    // router.push(`/dashboard/chat/${newPartyId}`);
+    // router.push(`/dashboard/chat/${newPartyId}`); // Uncomment to navigate
   };
 
   return (
@@ -115,9 +199,13 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
             <div className="space-y-2">
               <Label>Invite Friends ({selectedFriends.length} selected)</Label>
               <ScrollArea className="h-[200px] w-full rounded-md border">
-                <div className="p-2 space-y-1">
-                  {mockFriendsList.length > 0 ? (
-                    mockFriendsList.map((friend) => (
+                {isLoadingFriends ? (
+                    <div className="flex justify-center items-center h-full">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                ) : friendsList.length > 0 ? (
+                    <div className="p-2 space-y-1">
+                    {friendsList.map((friend) => (
                       <div
                         key={friend.id}
                         className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted has-[button:focus-visible]:bg-muted has-[:checked]:bg-primary/10"
@@ -132,18 +220,18 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
                           aria-labelledby={`friend-label-${friend.id}`}
                         />
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={friend.avatar} alt={friend.name} data-ai-hint="profile avatar" />
-                          <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
+                          <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${friend.displayName.charAt(0)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
+                          <AvatarFallback>{friend.displayName.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <label id={`friend-label-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                          {friend.name}
+                          {friend.displayName} <span className="text-xs text-muted-foreground">(@{friend.username})</span>
                         </label>
                       </div>
-                    ))
+                    ))}
+                    </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground p-2 text-center">You have no friends to invite yet.</p>
+                    <p className="text-sm text-muted-foreground p-4 text-center">You have no friends to invite yet, or they couldn't be loaded.</p>
                   )}
-                </div>
               </ScrollArea>
             </div>
           </div>
@@ -151,7 +239,7 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
             <DialogClose asChild>
               <Button type="button" variant="outline">Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={!partyName.trim() || selectedFriends.length === 0}>
+            <Button type="submit" disabled={!partyName.trim() || selectedFriends.length === 0 || isLoadingFriends}>
               Create Party
             </Button>
           </DialogFooter>

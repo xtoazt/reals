@@ -19,41 +19,43 @@ interface ChatPageProps { // Props for the component
 
 interface UserProfileData {
   displayName: string;
+  // Add other fields if needed, e.g., avatar for chat header
 }
 
 export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   // Unwap the params Promise using React.use()
   const params = React.use(paramsPromise);
-  const { chatId } = params; // Now params is { chatId: string }
+  const unwrappedChatId = params.chatId; 
 
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'party' | 'dm' | 'ai'>('global');
-  const [resolvedChatId, setResolvedChatId] = useState(chatId); // Initialize with unwrapped chatId
+  // Use a state for chatId that is initialized by the unwrapped param
+  // This helps manage its lifecycle consistently within the component's effects.
+  const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
 
-  // Effect to update resolvedChatId if chatId from params changes.
+  // Effect to update resolvedChatId if unwrappedChatId from params changes.
+  // This could happen if the user navigates between chat pages.
   useEffect(() => {
-    setResolvedChatId(chatId);
-  }, [chatId]);
+    setResolvedChatId(unwrappedChatId);
+  }, [unwrappedChatId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      if (!user && resolvedChatId !== 'ai-chatbot' && resolvedChatId !== 'global') {
-        // router.push('/auth'); 
-      }
+      // Removed authentication check for global/ai-chatbot, as it might be desired for logged-out users too
     });
     return () => unsubscribe();
-  }, [router, resolvedChatId]);
+  }, [router]); // Removed resolvedChatId from deps as auth state is general
 
   useEffect(() => {
+    // This effect now primarily depends on resolvedChatId and currentUser
+    // to determine the chat context.
     setIsLoading(true);
     let determinedTitle = '';
     let determinedType: 'global' | 'party' | 'dm' | 'ai' = 'global';
-    // Use resolvedChatId (state) for consistency within this effect
-    let determinedResolvedChatId = resolvedChatId; 
 
     const setupChat = async () => {
       if (resolvedChatId === 'global') {
@@ -62,9 +64,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       } else if (resolvedChatId === 'ai-chatbot') {
         determinedTitle = 'AI Chatbot';
         determinedType = 'ai';
-      } else if (resolvedChatId && resolvedChatId.includes('dm_')) { // Check resolvedChatId for safety
+      } else if (resolvedChatId && resolvedChatId.startsWith('dm_')) {
         determinedType = 'dm';
-        if (currentUser && currentUser.uid) {
+        if (currentUser && currentUser.uid) { // Ensure currentUser is available for DM logic
           const uids = resolvedChatId.substring(3).split('_');
           const otherUserId = uids.find(uid => uid !== currentUser.uid);
 
@@ -77,26 +79,36 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 determinedTitle = `Chat with ${userData.displayName || 'User'}`;
               } else {
                 determinedTitle = 'Chat with User'; // Fallback
+                console.warn(`User profile not found for DM partner: ${otherUserId}`);
               }
             } catch (error) {
               console.error("Error fetching DM user profile:", error);
               determinedTitle = 'Chat with User'; // Fallback on error
             }
           } else {
+            // This case might indicate an invalid DM chatId or the current user is not part of it.
             determinedTitle = 'Direct Message'; 
             if (currentUser.uid && !uids.includes(currentUser.uid)) {
-                console.error("Current user not part of this DM channel based on chatId");
+                console.error("Current user not part of this DM channel based on chatId:", resolvedChatId);
+                determinedTitle = "Invalid DM";
+            } else if (!otherUserId) {
+                console.error("Could not determine other user in DM:", resolvedChatId);
                 determinedTitle = "Invalid DM";
             }
           }
+        } else if (!currentUser) {
+           // If it's a DM and currentUser is not yet loaded, show loading.
+           // This state will be resolved when currentUser becomes available.
+          setChatTitle('Loading DM...');
+          setIsLoading(true); // Explicitly keep loading
+          return; // Exit early, setupChat will re-run when currentUser is set
         } else {
-          determinedTitle = 'Direct Message'; // User not loaded yet
+            // Should not happen if currentUser.uid is required above, but as a fallback
+            determinedTitle = 'Direct Message';
         }
-        determinedResolvedChatId = resolvedChatId;
-      } else if (resolvedChatId) { // For dynamic party chats
-        determinedTitle = `Party: ${resolvedChatId}`;
+      } else if (resolvedChatId) { // For dynamic party chats (e.g., "party-someid")
+        determinedTitle = `Party: ${resolvedChatId}`; // Basic title for now
         determinedType = 'party';
-        determinedResolvedChatId = resolvedChatId;
       } else {
         // Fallback or error if resolvedChatId is undefined/empty
         determinedTitle = "Invalid Chat";
@@ -109,16 +121,11 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       setIsLoading(false);
     };
 
-    // If it's a DM and currentUser is not yet available, wait.
-    if (resolvedChatId && resolvedChatId.includes('dm_') && !currentUser) {
-        setChatTitle('Loading DM...');
-    } else {
-       setupChat();
-    }
+    setupChat();
 
-  }, [resolvedChatId, currentUser]); // Depend on resolvedChatId state
+  }, [resolvedChatId, currentUser]); // Key dependencies for setting up the chat
 
-  if (isLoading) {
+  if (isLoading && !chatTitle) { // More robust loading check
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -127,10 +134,12 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     );
   }
   
-  if (!chatTitle) {
+  if (!isLoading && (!chatTitle || chatTitle === "Invalid DM")) { // Handle invalid DM state
       return (
-        <div className="flex justify-center items-center h-full">
-          <p>Could not load chat information or access denied.</p>
+        <div className="flex flex-col justify-center items-center h-full text-center">
+          <p className="text-lg font-semibold">Could not load chat information.</p>
+          <p className="text-muted-foreground">The chat may be invalid or you might not have access.</p>
+          <Button onClick={() => router.push('/dashboard')} className="mt-4">Go to Dashboard</Button>
         </div>
       );
   }
