@@ -8,13 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound } from "lucide-react";
-// import { ThemeToggle } from "@/components/theme-toggle"; // ThemeToggle removed from here
+import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info } from "lucide-react";
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -62,7 +62,7 @@ export default function SettingsPage() {
       {/* Account Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl flex items-center"><Shield className="mr-2 h-5 w-5 text-primary" />Account</CardTitle>
+          <CardTitle className="text-xl flex items-center"><UserIcon className="mr-2 h-5 w-5 text-primary" />Account</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -117,7 +117,6 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">
             You can change the application theme using the theme toggle button in the top navigation bar.
           </p>
-          {/* ThemeToggle was here, now moved to TopNavBar */}
         </CardContent>
       </Card>
       
@@ -140,6 +139,19 @@ export default function SettingsPage() {
           <Button variant="link" className="p-0 text-primary" onClick={() => toast({ title: "Feature Info", description: "Blocked users management will be available here."})}>Manage Blocked Users</Button>
         </CardContent>
       </Card>
+
+      {/* About Section */}
+      <Card>
+        <CardHeader>
+            <CardTitle className="text-xl flex items-center"><Info className="mr-2 h-5 w-5 text-primary" />About RealTalk</CardTitle>
+        </CardHeader>
+        <CardContent>
+            <Link href="/dashboard/settings/about" passHref>
+                <Button variant="outline" className="w-full md:w-auto">View About Page</Button>
+            </Link>
+        </CardContent>
+      </Card>
+
 
       {/* Logout */}
       <Card>

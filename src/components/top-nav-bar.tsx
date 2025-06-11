@@ -24,8 +24,8 @@ import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase
 import React, { useEffect, useState } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
-import { ScrollArea } from '@/components/ui/scroll-area'; // For notification list
-import { formatDistanceToNow } from 'date-fns'; // For relative time
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatDistanceToNow } from 'date-fns';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -48,9 +48,9 @@ interface AppNotification {
   title: string;
   description: string;
   timestamp: number;
-  link?: string; // e.g., to a specific chat or profile
+  link?: string; 
   read: boolean;
-  icon?: React.ElementType; // Lucide icon component
+  icon?: React.ElementType; 
 }
 
 export function TopNavBar() {
@@ -63,8 +63,6 @@ export function TopNavBar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  // TODO: This function would ideally be called from a global state/context management system
-  // when a notification-worthy event occurs elsewhere in the app.
   const addPlaceholderNotification = (type: 'message' | 'system' | 'friend') => {
     const newNotif: AppNotification = {
       id: `notif-${Date.now()}`,
@@ -75,12 +73,11 @@ export function TopNavBar() {
       read: false,
       icon: type === 'message' ? MessageSquare : type === 'friend' ? Users : Sparkles,
     };
-    setNotifications(prev => [newNotif, ...prev].slice(0, 10)); // Keep max 10 notifications
+    setNotifications(prev => [newNotif, ...prev].slice(0, 10)); 
   };
 
   const markNotificationAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    // In a real system, you'd also update the backend here
   };
   
   const clearAllNotifications = () => {
@@ -108,7 +105,7 @@ export function TopNavBar() {
         });
       } else {
         setUserProfileData(null);
-        setNotifications([]); // Clear notifications on logout
+        setNotifications([]); 
       }
     });
     return () => unsubscribe();
@@ -148,6 +145,7 @@ export function TopNavBar() {
   };
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+  const userTitleStyle = userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'};
 
   return (
     <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground">
@@ -229,7 +227,6 @@ export function TopNavBar() {
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {/* Placeholder for adding notifications - remove in real implementation */}
             <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => addPlaceholderNotification('message')} className="text-xs">Simulate Message Notif</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => addPlaceholderNotification('friend')} className="text-xs">Simulate Friend Notif</DropdownMenuItem>
@@ -278,11 +275,11 @@ export function TopNavBar() {
               <>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none" style={{ color: userProfileData.nameColor }}>
+                    <p className="text-sm font-medium leading-none" style={{ color: userProfileData.nameColor || 'hsl(var(--foreground))' }}>
                       {userProfileData.displayName}
                     </p>
                     {userProfileData.title && (
-                      <p className="text-xs leading-none text-muted-foreground flex items-center">
+                      <p className="text-xs leading-none italic" style={userTitleStyle}>
                         {userProfileData.title}
                       </p>
                     )}

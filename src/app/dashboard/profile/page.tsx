@@ -90,9 +90,7 @@ export default function ProfilePage() {
                 };
                 setUserProfile(basicProfile);
                 setBioEdit(basicProfile.bio);
-                 // If no data, implies a new user, redirect to create username if needed
                 if (!data?.username) {
-                  // router.push('/create-profile'); // Or some onboarding step
                   console.log("User profile data not found, consider onboarding.");
                 }
             }
@@ -261,7 +259,7 @@ export default function ProfilePage() {
       <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
 
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-48 md:h-56"> {/* Increased banner height */}
+        <div className="relative bg-muted h-48 md:h-56">
           <Image 
             src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
             alt="Profile banner" 
@@ -301,13 +299,13 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left pt-2 md:pt-0"> {/* Added pt-2 for mobile, ensured pt-0 for md */}
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Increased pt-4 for mobile */}
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {userProfile.displayName}
               </h1>
               {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
-                <p className="text-sm text-accent font-semibold flex items-center justify-center md:justify-start">
+                <p className="text-sm font-semibold italic" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                   {userProfile.title}
                 </p>
               )}
@@ -356,8 +354,8 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-accent opacity-70 mr-1 text-sm font-semibold">Title:</span></Label>
-                  <Input id="titleInput" value={userProfile.title} disabled />
+                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-sm font-semibold italic" style={{color: userProfile.nameColor || 'hsl(var(--foreground))'}}>Title:</span></Label>
+                  <Input id="titleInput" value={userProfile.title} disabled className="italic" style={{color: userProfile.nameColor || 'hsl(var(--foreground))'}}/>
                 </div>
               )}
               {userProfile.nameColor && (

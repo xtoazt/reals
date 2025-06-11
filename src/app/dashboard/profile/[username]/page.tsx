@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, get, off } from 'firebase/database';
-import { useRouter, useParams, notFound } from 'next/navigation'; // Import useParams
+import { useRouter, useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 
 interface UserProfileData {
@@ -37,7 +37,7 @@ const generateDmChatId = (uid1: string, uid2: string): string => {
 export default function ViewProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
-  const params = useParams(); // Get username from URL
+  const params = useParams(); 
   const usernameFromParams = typeof params.username === 'string' ? params.username : null;
 
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -49,8 +49,6 @@ export default function ViewProfilePage() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      // We need currentUser to determine if it's our own profile,
-      // but fetching viewed profile doesn't strictly depend on it initially.
     });
     return () => unsubscribeAuth();
   }, []);
@@ -58,7 +56,7 @@ export default function ViewProfilePage() {
   useEffect(() => {
     if (!usernameFromParams) {
       setIsLoading(false);
-      notFound(); // Or redirect to a 404 page
+      notFound(); 
       return;
     }
 
@@ -78,7 +76,6 @@ export default function ViewProfilePage() {
 
         const uid = usernameSnapshot.val();
         if (currentUser && currentUser.uid === uid) {
-          // If viewing own profile via /profile/[username], redirect to /profile
           router.replace('/dashboard/profile');
           return;
         }
@@ -123,7 +120,7 @@ export default function ViewProfilePage() {
     };
 
     fetchProfile();
-  }, [usernameFromParams, toast, router, currentUser]); // Re-run if usernameFromParams or currentUser changes
+  }, [usernameFromParams, toast, router, currentUser]); 
 
   if (isLoading) {
     return (
@@ -142,10 +139,7 @@ export default function ViewProfilePage() {
     );
   }
   
-  // If it's the current user's profile, they should be on /dashboard/profile for editing capabilities
-  // This check is primarily if the redirect in useEffect hasn't completed or if direct navigation happened.
   if (isOwnProfile && currentUser?.uid === viewedUserProfile.uid) {
-     // This shouldn't be reached if redirect works, but as a fallback:
      return (
         <div className="flex flex-col justify-center items-center h-full space-y-4">
             <p className="text-xl">Redirecting to your editable profile...</p>
@@ -177,13 +171,13 @@ export default function ViewProfilePage() {
                 <AvatarFallback className="text-4xl">{viewedUserProfile.displayName.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName.charAt(0)}</AvatarFallback>
               </Avatar>
             </div>
-            <div className="flex-1 text-center md:text-left pt-2 md:pt-0">
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Increased pt-4 for mobile */}
               <h1 className="text-3xl font-bold font-headline" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {viewedUserProfile.displayName}
               </h1>
               {viewedUserProfile.username && <p className="text-sm text-muted-foreground">@{viewedUserProfile.username}</p>}
               {viewedUserProfile.title && (
-                <p className="text-sm text-accent font-semibold flex items-center justify-center md:justify-start">
+                <p className="text-sm font-semibold italic" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
                   {viewedUserProfile.title}
                 </p>
               )}
@@ -224,8 +218,8 @@ export default function ViewProfilePage() {
               </div>
                {viewedUserProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-accent opacity-70 mr-1 text-sm font-semibold">Title:</span></Label>
-                  <Input id="titleInput" value={viewedUserProfile.title} disabled />
+                  <Label htmlFor="titleInput"><span className="text-sm font-semibold italic" style={{color: viewedUserProfile.nameColor || 'hsl(var(--foreground))'}}>Title:</span></Label>
+                  <Input id="titleInput" value={viewedUserProfile.title} disabled className="italic" style={{color: viewedUserProfile.nameColor || 'hsl(var(--foreground))'}}/>
                 </div>
               )}
               {viewedUserProfile.nameColor && (

@@ -91,13 +91,18 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
          return;
       }
 
-      const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       const currentUserProfileRef = ref(database, `users/${currentUser.uid}`);
       const currentUserProfileSnap = await get(currentUserProfileRef);
-      const currentUserUsernameVal = currentUserProfileSnap.val()?.username || "A user";
+      const currentSenderUsername = currentUserProfileSnap.val()?.username;
 
+      if (!currentSenderUsername) {
+        toast({ title: "Error", description: "Could not retrieve your username to send the request. Please ensure your profile is complete.", variant: "destructive" });
+        return;
+      }
+      
+      const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       await set(requestPayloadRef, {
-        senderUsername: currentUserUsernameVal,
+        senderUsername: currentSenderUsername,
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
         status: "pending"
@@ -151,7 +156,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   const handleProfileInteraction = (username?: string) => {
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
         if (message.senderUid !== 'ai-chatbot-uid') { 
-            if (currentUser?.uid === message.senderUid) router.push('/dashboard/profile'); // Navigate to own editable profile
+            if (currentUser?.uid === message.senderUid) router.push('/dashboard/profile');
             else toast({ title: "User Info", description: "Cannot navigate to this user's profile."});
         }
         return;
@@ -168,10 +173,10 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
           title: (
             <div className="flex items-center">
                 <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
-                {message.senderTitle && <span className="ml-1.5 text-xs text-accent font-normal">{message.senderTitle}</span>}
+                {message.senderTitle && <span className="ml-1.5 text-xs italic" style={{color: message.senderNameColor || 'hsl(var(--foreground))'}}>{message.senderTitle}</span>}
             </div>
           ),
-          description: `Display Name: ${message.sender}. Click to view profile (mock).`,
+          description: `Display Name: ${message.sender}. Click an action below.`,
           action: (
             <div className="flex flex-col gap-2 mt-2">
               <Button variant="outline" size="sm" onClick={() => message.senderUsername ? router.push(`/dashboard/profile/${message.senderUsername}`) : toast({title: "Error", description: "Username not found."})}>
@@ -223,7 +228,9 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-  const senderStyle = message.senderNameColor ? { color: message.senderNameColor } : {};
+  const senderNameStyle = message.senderNameColor ? { color: message.senderNameColor } : {};
+  const senderTitleStyle = message.senderNameColor ? { color: message.senderNameColor } : { color: 'hsl(var(--foreground))' };
+
 
   return (
     <div
@@ -256,7 +263,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
                   "text-xs font-semibold",
                   message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
                 )}
-                style={senderStyle}
+                style={senderNameStyle}
                 onClick={!message.isOwnMessage ? () => handleProfileInteraction(message.senderUsername) : undefined}
               >
                 {message.sender}
@@ -265,7 +272,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
                 <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>
               )}
               {message.senderTitle && (
-                <p className="text-xs text-accent font-medium flex items-center shrink-0"> 
+                <p className="text-xs font-medium italic flex items-center shrink-0" style={senderTitleStyle}> 
                   {message.senderTitle}
                 </p>
               )}
@@ -324,7 +331,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         )}
       </div>
       {message.isOwnMessage && showAvatarAndSender && (
-        <Avatar className="h-8 w-8 flex-shrink-0" onClick={() => router.push('/dashboard/profile')}>
+        <Avatar className="h-8 w-8 flex-shrink-0 cursor-pointer" onClick={() => router.push('/dashboard/profile')}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar"/>
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
