@@ -89,6 +89,7 @@ export function AuthForm() {
     const lowerCaseUsername = values.username.toLowerCase();
     const emailForAuth = `${lowerCaseUsername}@${DUMMY_EMAIL_DOMAIN}`;
     try {
+      // Ensure Email/Password sign-in provider is enabled in Firebase console > Authentication > Sign-in method
       await signInWithEmailAndPassword(auth, emailForAuth, values.password);
       toast({
         title: 'Logged In!',
@@ -97,9 +98,11 @@ export function AuthForm() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error("Login error:", error);
-      let errorMessage = 'An unexpected error occurred.';
+      let errorMessage = 'An unexpected error occurred during login.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        errorMessage = 'Invalid username or password.';
+        errorMessage = 'The username or password you entered is incorrect. Please try again.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many login attempts. Please try again later.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -131,6 +134,7 @@ export function AuthForm() {
     }
 
     try {
+      // Ensure Email/Password sign-in provider is enabled in Firebase console > Authentication > Sign-in method
       const userCredential = await createUserWithEmailAndPassword(auth, emailForAuth, values.password);
       const user = userCredential.user;
 
@@ -177,9 +181,13 @@ export function AuthForm() {
       }
     } catch (error: any) {
       console.error("Signup error:", error);
-      let errorMessage = 'An unexpected error occurred.';
+      let errorMessage = 'An unexpected error occurred during signup.';
       if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This username is already taken. Please choose another.';
+        errorMessage = 'This username is already taken (the email address derived from it is in use). Please choose another username.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'The password is too weak. Please choose a stronger password.';
+      } else if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/missing-provider-config') {
+        errorMessage = 'Email/Password sign-up is not enabled. Please contact support.';
       } else if (error.code === 'auth/configuration-not-found') {
         errorMessage = 'Firebase authentication is not configured correctly. Please check your Firebase project settings.';
       } else if (error.message) {
@@ -368,3 +376,5 @@ export function AuthForm() {
     </Card>
   );
 }
+
+    
