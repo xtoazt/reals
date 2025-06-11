@@ -13,9 +13,11 @@ import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, get } from 'firebase/database'; // Removed onValue as we only fetch once
+import { ref, get } from 'firebase/database';
 import { useRouter, useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 interface UserProfileData {
   uid: string;
@@ -43,7 +45,10 @@ export default function ViewProfilePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [viewedUserProfile, setViewedUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isOwnProfile, setIsOwnProfile] = useState(false); // This state seems unused, consider removal or using for logic
+  
+  const [areFriends, setAreFriends] = useState(false);
+  const [isLoadingFriendStatus, setIsLoadingFriendStatus] = useState(true);
+
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -61,6 +66,9 @@ export default function ViewProfilePage() {
 
     const fetchProfile = async () => {
       setIsLoading(true);
+      setIsLoadingFriendStatus(true); // Reset friend status loading on new profile fetch
+      setAreFriends(false); // Reset friend status
+
       try {
         const usernameRef = ref(database, `usernames/${usernameFromParams.toLowerCase()}`);
         const usernameSnapshot = await get(usernameRef);
@@ -83,10 +91,10 @@ export default function ViewProfilePage() {
         const userProfileRef = ref(database, `users/${uid}`);
         const profileSnapshot = await get(userProfileRef);
 
+        let profileData: UserProfileData | null = null;
         if (profileSnapshot.exists()) {
           const data = profileSnapshot.val();
-          
-          setViewedUserProfile({
+          profileData = {
             uid: uid,
             username: data.username,
             displayName: data.displayName,
@@ -96,26 +104,42 @@ export default function ViewProfilePage() {
             title: data.title,
             nameColor: data.nameColor,
             friendsCount: data.friendsCount || 0,
-          });
-          // setIsOwnProfile(currentUser?.uid === uid); // Redundant if redirecting
+          };
+          setViewedUserProfile(profileData);
         } else {
           toast({ title: "Profile Data Missing", description: `Could not load full profile for @${usernameFromParams}.`, variant: "destructive" });
           setViewedUserProfile(null);
+          setIsLoading(false); // Stop loading if profile data is missing
           notFound();
+          return; // Exit if profile data is missing
         }
+
+        // Check friendship status if currentUser and profileData are available and not the same user
+        if (currentUser && profileData && currentUser.uid !== profileData.uid) {
+          const friendRef = ref(database, `friends/${currentUser.uid}/${profileData.uid}`);
+          const friendSnapshot = await get(friendRef);
+          setAreFriends(friendSnapshot.exists());
+        } else {
+          setAreFriends(false); // Not friends with self or if no current user
+        }
+
       } catch (error) {
         console.error("Error fetching user profile:", error);
         toast({ title: "Error", description: "Failed to fetch profile.", variant: "destructive" });
         setViewedUserProfile(null);
       } finally {
         setIsLoading(false);
+        setIsLoadingFriendStatus(false);
       }
     };
 
+    // Only fetch profile if currentUser state is determined (either user or null)
+    // This prevents race conditions or unnecessary fetches before auth state is known.
     if (currentUser !== undefined) { 
        fetchProfile();
     }
   }, [usernameFromParams, toast, router, currentUser]); 
+
 
   if (isLoading || currentUser === undefined) { 
     return (
@@ -126,6 +150,8 @@ export default function ViewProfilePage() {
   }
 
   if (!viewedUserProfile) {
+    // This state is typically handled by notFound() inside useEffect,
+    // but as a fallback or if notFound() is not used for some reason.
     return (
       <div className="flex flex-col justify-center items-center h-full space-y-4">
         <p className="text-xl">Profile could not be loaded.</p>
@@ -134,11 +160,9 @@ export default function ViewProfilePage() {
     );
   }
   
-  // This case is handled by the redirect within useEffect
-  // if (isOwnProfile && currentUser?.uid === viewedUserProfile.uid) { ... }
-
-
   const userTitleStyle = viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'};
+  const avatarFallbackText = viewedUserProfile.displayName?.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName?.charAt(0) || (viewedUserProfile.username ? viewedUserProfile.username.charAt(0).toUpperCase() : 'U');
+
 
   return (
     <div className="space-y-6">
@@ -160,10 +184,10 @@ export default function ViewProfilePage() {
             <div className="relative">
               <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
                 <AvatarImage src={viewedUserProfile.avatar} alt={viewedUserProfile.displayName} data-ai-hint="profile picture" key={viewedUserProfile.avatar}/>
-                <AvatarFallback className="text-4xl">{viewedUserProfile.displayName?.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                <AvatarFallback className="text-4xl">{avatarFallbackText}</AvatarFallback>
               </Avatar>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Ensure this div has enough space */}
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
               <h1 className="text-3xl font-bold font-headline" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {viewedUserProfile.displayName}
               </h1>
@@ -178,11 +202,33 @@ export default function ViewProfilePage() {
               </div>
             </div>
             {currentUser && viewedUserProfile.uid !== currentUser.uid && (
-                 <Link href={`/dashboard/chat/${generateDmChatId(currentUser.uid, viewedUserProfile.uid)}`} passHref>
-                    <Button variant="outline">
-                        <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
-                    </Button>
+              isLoadingFriendStatus ? (
+                <Button variant="outline" disabled>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking Status...
+                </Button>
+              ) : areFriends ? (
+                <Link href={`/dashboard/chat/${generateDmChatId(currentUser.uid, viewedUserProfile.uid)}`} passHref>
+                  <Button variant="outline">
+                    <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
+                  </Button>
                 </Link>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {/* Button is effectively disabled but wrapped for tooltip */}
+                      <span tabIndex={0}> 
+                        <Button variant="outline" disabled style={{ pointerEvents: 'none' }}> 
+                          <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>You must be friends to message this user.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )
             )}
           </div>
           
@@ -230,3 +276,4 @@ export default function ViewProfilePage() {
     </div>
   );
 }
+
