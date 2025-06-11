@@ -14,13 +14,12 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
+import type { AvatarProps } from '@radix-ui/react-avatar'; // Ensure Avatar is imported if used directly
 
 interface ChatInterfaceProps {
   chatTitle: string;
   chatType: 'global' | 'party' | 'dm' | 'ai';
   chatId?: string;
-  // TODO: Implement a way to add notifications (e.g., via context or prop callback)
-  // onNewNotification?: (notification: AppNotification) => void;
 }
 
 interface UserProfileData {
@@ -31,6 +30,8 @@ interface UserProfileData {
   nameColor?: string;
   title?: string;
 }
+
+const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -54,7 +55,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        // Ensure core properties exist, provide fallbacks if necessary
         const profile: UserProfileData = {
           uid,
           username: userData.username || "unknown_user",
@@ -80,7 +80,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         fetchUserProfile(user.uid).then(profile => {
             if(profile) setCurrentUserProfile(profile);
             else {
-                 // Fallback if profile fetch fails for current user
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: user.email?.split('@')[0] || "user",
@@ -94,7 +93,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         if (chatType !== 'ai') { 
             setMessages([]);
         }
-        // Always set loading to false if user logs out and it's not AI chat
         if (chatType !== 'ai') setIsLoadingMessages(false);
       }
     });
@@ -123,10 +121,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
 
-    // For non-AI chats, require currentUser to proceed
     if (!currentUser) {
-        setIsLoadingMessages(false); // Stop loading if no user
-        setMessages([]); // Clear messages if no user
+        setIsLoadingMessages(false);
+        setMessages([]);
         return;
     }
 
@@ -145,7 +142,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const senderUid = msgData.senderUid;
         const profile = await fetchUserProfile(senderUid);
         
-        // Fallback for avatar
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
 
@@ -168,16 +164,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       resolvedMessages.sort((a,b) => (a.originalTimestamp || 0) - (b.originalTimestamp || 0));
       setMessages(resolvedMessages);
       setIsLoadingMessages(false);
-
-      // TODO: Implement notification generation logic here if document is hidden or chat is not active
-      // For example:
-      // if (document.hidden && onNewNotification && resolvedMessages.length > 0) {
-      //   const lastMessage = resolvedMessages[resolvedMessages.length - 1];
-      //   if (!lastMessage.isOwnMessage) {
-      //     onNewNotification({ /* ... notification object ... */ });
-      //   }
-      // }
-
     }, (error) => {
       console.error("Error fetching messages:", error);
       toast({ title: "Error", description: "Could not load messages.", variant: "destructive" });
@@ -240,7 +226,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
           console.error("Error calling AI chat flow or processing its response:", error);
-          const errorMessageContent = error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.";
+          const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
           const errorMessage: Message = {
             id: String(Date.now() + 1),
             sender: 'RealTalk AI',
@@ -324,7 +310,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef}>
-          <div className="p-2 md:p-4 space-y-1 md:space-y-2">
+          <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> {/* Reduced space-y for tighter message groups */}
             {isLoadingMessages ? (
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -335,16 +321,32 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 <p>Be the first to say something!</p>
               </div>
             ) : (
-              messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
-              ))
+              messages.map((msg, index) => {
+                const previousMessage = index > 0 ? messages[index - 1] : undefined;
+                const isSameSenderAsPrevious = previousMessage && previousMessage.senderUid === msg.senderUid;
+                
+                let isWithinContinuationThreshold = false;
+                if (isSameSenderAsPrevious && msg.originalTimestamp && previousMessage?.originalTimestamp) {
+                    isWithinContinuationThreshold = (msg.originalTimestamp - previousMessage.originalTimestamp) < MESSAGE_GROUP_THRESHOLD_MS;
+                }
+              
+                const showAvatarAndSender = !isSameSenderAsPrevious || !isWithinContinuationThreshold;
+                const isContinuation = !showAvatarAndSender;
+
+                return (
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    showAvatarAndSender={showAvatarAndSender}
+                    isContinuation={isContinuation}
+                  />
+                );
+              })
             )}
              {chatType === 'ai' && isAiResponding && (
                 <div className="flex items-center space-x-2 p-2.5">
-                    <Avatar className="h-8 w-8">
-                        <AvatarImage src={'https://placehold.co/40x40.png?text=AI'} alt={'RealTalk AI'} />
-                        <AvatarFallback>AI</AvatarFallback>
-                    </Avatar>
+                    {/* Replaced Avatar component with direct Image for AI, or a fallback character */}
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">AI</div>
                     <div className="flex items-center space-x-1">
                         <span className="text-xs font-semibold" style={{color: '#8B5CF6'}}>RealTalk AI</span>
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

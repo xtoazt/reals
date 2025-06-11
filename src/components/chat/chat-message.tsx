@@ -31,9 +31,11 @@ export interface Message {
 
 interface ChatMessageProps {
   message: Message;
+  showAvatarAndSender: boolean;
+  isContinuation: boolean;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, showAvatarAndSender, isContinuation }: ChatMessageProps) {
   const { toast } = useToast();
   const currentUser = auth.currentUser;
 
@@ -51,7 +53,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
       return;
     }
     
-    // Check if current user is blocked by target user
     const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
     const blockedByTargetSnap = await get(blockedByTargetRef);
     if (blockedByTargetSnap.exists()) {
@@ -59,14 +60,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
       return;
     }
 
-    // Check if target user is blocked by current user
     const targetBlockedByMeRef = ref(database, `blocked_users/${currentUser.uid}/${targetUid}`);
     const targetBlockedByMeSnap = await get(targetBlockedByMeRef);
     if (targetBlockedByMeSnap.exists()) {
       toast({ title: "Unblock User", description: `You have blocked @${targetUsername}. Unblock them to send a friend request.`, variant: "destructive" });
       return;
     }
-
 
     try {
       const friendCheckRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
@@ -146,7 +145,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
     }
   };
 
-
   const handleProfileInteraction = () => {
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
         if (message.senderUid !== 'ai-chatbot-uid') { 
@@ -184,7 +182,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   };
 
   const renderContent = () => {
-    const parts = message.content.split(/(\s+)/);
+    const parts = message.content.split(/(\s+)/); // Keep spaces for rejoining
     return parts.map((part, index) => {
       if (part.startsWith('@') && part.length > 1) {
         const mentionedUsername = part.substring(1);
@@ -196,7 +194,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       }
       if (/^(https?):\/\/[^\s$.?#].[^\s]*$/.test(part)) {
         try {
-            const url = new URL(part);
+            const url = new URL(part); // Validate if it's a real URL
             return (
               <a
                 key={index}
@@ -209,7 +207,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </a>
             );
         } catch (e) {
-            return part; // Return part as is if URL parsing fails
+            // Not a valid URL, render as plain text
+            return part;
         }
       }
       return part;
@@ -222,18 +221,30 @@ export function ChatMessage({ message }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 my-1 p-2.5 rounded-lg max-w-[85%] md:max-w-[75%]',
-        message.isOwnMessage ? 'ml-auto bg-primary/10' : 'mr-auto bg-card shadow-sm border'
+        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group', // Added 'group' for hover effects
+        isContinuation ? 'mt-[2px]' : 'my-1', 
+        message.isOwnMessage
+          ? 'ml-auto bg-primary/10'
+          : `mr-auto border ${showAvatarAndSender ? 'bg-card shadow-sm' : 'bg-card/95'}`,
+        // Indentation & padding for continued messages from others:
+        !message.isOwnMessage && isContinuation 
+          ? 'ml-[calc(2rem+0.75rem)] pr-2.5 pb-1 pt-0.5 pl-2.5' // Original avatar (h-8=2rem) + gap-3 (0.75rem)
+          : 'p-2.5',
+        // Padding for continued own messages
+        message.isOwnMessage && isContinuation 
+          ? 'pr-2.5 pb-1 pt-0.5 pl-2.5' 
+          : '',
       )}
     >
-      {!message.isOwnMessage && (
-        <Avatar className="h-8 w-8 cursor-pointer" onClick={handleProfileInteraction}>
+      {!message.isOwnMessage && showAvatarAndSender && (
+        <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={handleProfileInteraction}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
       <div className="flex-1 min-w-0"> 
-        <div className="flex items-center justify-between gap-2">
+        {showAvatarAndSender && (
+          <div className="flex items-center justify-between gap-2">
            <div className="flex items-baseline gap-1 flex-wrap"> 
             <p
                 className={cn(
@@ -256,9 +267,21 @@ export function ChatMessage({ message }: ChatMessageProps) {
            </div>
           <p className={cn("text-xs text-muted-foreground flex-shrink-0", message.isOwnMessage ? "ml-2" : "")}>{message.timestamp}</p>
         </div>
-        <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
+        )}
+        <div className={cn(
+            "text-sm text-foreground whitespace-pre-wrap break-words",
+            showAvatarAndSender ? "mt-1" : "mt-0" 
+        )}>
           {renderContent()}
         </div>
+
+        {/* Subtle timestamp for continued messages, appears on hover of the message group */}
+        {isContinuation && (
+          <div className="text-right opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out -mr-1">
+            <p className="text-[10px] text-muted-foreground/70 mt-0.5">{message.timestamp}</p>
+          </div>
+        )}
+
         {message.imageUrl && (
           <div className="mt-2">
             <Image
@@ -296,8 +319,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
         )}
       </div>
-      {message.isOwnMessage && (
-        <Avatar className="h-8 w-8">
+      {message.isOwnMessage && showAvatarAndSender && (
+        <Avatar className="h-8 w-8 flex-shrink-0">
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar"/>
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
