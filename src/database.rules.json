@@ -22,7 +22,7 @@
     },
     "usernames": {
       "$username": {
-        ".read": true, 
+        ".read": true,
         ".write": "auth != null && newData.isString() && newData.val().length > 0",
         ".validate": "newData.isString() && newData.val().length > 10"
       }
@@ -74,16 +74,16 @@
     },
     "blocked_users": {
       "$blocker_uid": {
-        ".read": "auth != null && auth.uid === $blocker_uid", 
+        ".read": "auth != null && auth.uid === $blocker_uid",
         "$blocked_uid": {
-          ".write": "auth != null && auth.uid === $blocker_uid", 
+          ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
         }
       }
     },
     "users_blocked_by": {
       "$blocked_uid": {
-        ".read": "auth != null && auth.uid === $blocked_uid", 
+        ".read": "auth != null && auth.uid === $blocked_uid",
         "$blocker_uid": {
           ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
