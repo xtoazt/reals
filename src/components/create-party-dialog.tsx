@@ -26,7 +26,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, get, off } from 'firebase/database';
 
 interface Friend {
-  id: string; // friend's UID
+  id: string; 
   username: string;
   displayName: string;
   avatar?: string;
@@ -71,10 +71,17 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile = { uid, ...userData };
+        const profile: UserProfileData = { 
+            uid, 
+            username: userData.username || "unknown_user", // Fallback for safety
+            displayName: userData.displayName || "Unknown User", // Fallback for safety
+            avatar: userData.avatar, 
+            nameColor: userData.nameColor 
+        };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
       }
+      console.warn(`User profile not found for UID: ${uid}`);
       return null;
     } catch (error) {
       console.error("Error fetching user profile:", error);
@@ -84,7 +91,7 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
 
   useEffect(() => {
     if (!currentUser || !isOpen) {
-      if (!isOpen) { // Reset friends list if dialog is closed
+      if (!isOpen) { 
         setFriendsList([]);
         setIsLoadingFriends(false);
       }
@@ -100,7 +107,7 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
         const friendUIDs = Object.keys(friendsData);
         for (const friendUid of friendUIDs) {
           const profile = await fetchUserProfile(friendUid);
-          if (profile) {
+          if (profile) { // Only add if profile was successfully fetched
             loadedFriends.push({
               id: friendUid,
               username: profile.username,
@@ -128,7 +135,6 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
     if (!isOpen) {
       setPartyName('');
       setSelectedFriends([]);
-      // usersCache can persist across dialog openings for efficiency, or be cleared too
     }
   }, [isOpen]);
 
@@ -151,20 +157,20 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
       return;
     }
 
-    // For now, just a toast. Actual party creation would involve:
-    // 1. Generating a unique partyId (e.g., `party-${Date.now()}` or a Firebase push key).
-    // 2. Creating a node in `/chats/{partyId}` with party info (name, members, etc.).
-    // 3. Potentially adding this party to a user's list of parties.
     const newPartyId = `party-${partyName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
     console.log('Creating party:', { partyName, selectedFriends, newPartyId });
     toast({
       title: 'Party Created (Mock)',
-      description: `"${partyName}" with ${selectedFriends.length} friend(s). ID: ${newPartyId}. Further implementation needed.`,
+      description: `"${partyName}" with ${selectedFriends.length} friend(s). ID: ${newPartyId}. Further implementation needed for actual chat creation.`,
     });
     
     setIsOpen(false);
-    // router.push(`/dashboard/chat/${newPartyId}`); // Uncomment to navigate
+    // router.push(`/dashboard/chat/${newPartyId}`); // Uncomment to navigate when party chat logic is implemented
   };
+  
+  const getAvatarFallbackText = (displayName?: string) => {
+    return displayName ? displayName.charAt(0).toUpperCase() : 'U';
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -220,11 +226,11 @@ export function CreatePartyDialog({ children }: CreatePartyDialogProps) {
                           aria-labelledby={`friend-label-${friend.id}`}
                         />
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${friend.displayName.charAt(0)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
-                          <AvatarFallback>{friend.displayName.charAt(0)}</AvatarFallback>
+                          <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
+                          <AvatarFallback>{getAvatarFallbackText(friend.displayName)}</AvatarFallback>
                         </Avatar>
                         <label id={`friend-label-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                          {friend.displayName} <span className="text-xs text-muted-foreground">(@{friend.username})</span>
+                          {friend.displayName || "Unnamed User"} <span className="text-xs text-muted-foreground">(@{friend.username || "unknown"})</span>
                         </label>
                       </div>
                     ))}

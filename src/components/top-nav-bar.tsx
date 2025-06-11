@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu } from 'lucide-react';
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,15 +14,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
 import { CreatePartyDialog } from './create-party-dialog';
-import { ThemeToggle } from '@/components/theme-toggle'; // Added ThemeToggle back
+import { ThemeToggle } from '@/components/theme-toggle'; 
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
+import { ScrollArea } from '@/components/ui/scroll-area'; // For notification list
+import { formatDistanceToNow } from 'date-fns'; // For relative time
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -40,6 +43,16 @@ interface UserProfileData {
   title?: string;
 }
 
+interface AppNotification {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: number;
+  link?: string; // e.g., to a specific chat or profile
+  read: boolean;
+  icon?: React.ElementType; // Lucide icon component
+}
+
 export function TopNavBar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -48,6 +61,31 @@ export function TopNavBar() {
   const [userProfileData, setUserProfileData] = useState<UserProfileData | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  // TODO: This function would ideally be called from a global state/context management system
+  // when a notification-worthy event occurs elsewhere in the app.
+  const addPlaceholderNotification = (type: 'message' | 'system' | 'friend') => {
+    const newNotif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: type === 'message' ? 'New Message' : type === 'friend' ? 'Friend Request Update' : 'System Alert',
+      description: type === 'message' ? `You have a new message in General Chat.` : type === 'friend' ? 'UserX accepted your friend request!' : 'Welcome to the new feature!',
+      timestamp: Date.now(),
+      link: type === 'message' ? '/dashboard/chat/global' : type === 'friend' ? '/dashboard/friends' : '/dashboard',
+      read: false,
+      icon: type === 'message' ? MessageSquare : type === 'friend' ? Users : Sparkles,
+    };
+    setNotifications(prev => [newNotif, ...prev].slice(0, 10)); // Keep max 10 notifications
+  };
+
+  const markNotificationAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    // In a real system, you'd also update the backend here
+  };
+  
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -70,6 +108,7 @@ export function TopNavBar() {
         });
       } else {
         setUserProfileData(null);
+        setNotifications([]); // Clear notifications on logout
       }
     });
     return () => unsubscribe();
@@ -97,11 +136,9 @@ export function TopNavBar() {
 
 
   const getActiveTab = () => {
-    // Exact matches first
     if (navItems.some(item => item.href === pathname)) {
       return pathname;
     }
-    // Handle chat pages by matching the base
     if (pathname.startsWith('/dashboard/chat/')) {
       if (pathname === '/dashboard/chat/global') return '/dashboard/chat/global';
       if (pathname === '/dashboard/chat/ai-chatbot') return '/dashboard/chat/ai-chatbot';
@@ -110,6 +147,7 @@ export function TopNavBar() {
     return currentBase ? currentBase.href : '/dashboard';
   };
 
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground">
@@ -169,11 +207,62 @@ export function TopNavBar() {
       </nav>
       
       <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle /> {/* ThemeToggle added back here */}
-        <Button variant="ghost" size="icon" className="rounded-full">
-          <Bell className="h-5 w-5" />
-          <span className="sr-only">Notifications</span>
-        </Button>
+        <ThemeToggle /> 
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="rounded-full relative">
+              <Bell className="h-5 w-5" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs">
+                  {unreadNotificationsCount}
+                </span>
+              )}
+              <span className="sr-only">Notifications</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 md:w-96">
+            <DropdownMenuLabel className="flex justify-between items-center">
+              <span>Notifications</span>
+              {notifications.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearAllNotifications} className="text-xs h-auto py-0.5 px-1.5">Clear All</Button>
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {/* Placeholder for adding notifications - remove in real implementation */}
+            <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => addPlaceholderNotification('message')} className="text-xs">Simulate Message Notif</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => addPlaceholderNotification('friend')} className="text-xs">Simulate Friend Notif</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <ScrollArea className="max-h-[300px] md:max-h-[400px]">
+              {notifications.length === 0 ? (
+                <DropdownMenuItem disabled className="text-center text-muted-foreground">No new notifications</DropdownMenuItem>
+              ) : (
+                notifications.map(notif => {
+                  const IconComponent = notif.icon || Sparkles;
+                  return (
+                    <DropdownMenuItem 
+                      key={notif.id} 
+                      className={`flex items-start gap-2.5 p-2.5 ${notif.read ? 'opacity-60' : ''}`}
+                      onClick={() => {
+                        markNotificationAsRead(notif.id);
+                        if (notif.link) router.push(notif.link);
+                      }}
+                    >
+                      <IconComponent className={`h-4 w-4 mt-0.5 flex-shrink-0 ${notif.read ? 'text-muted-foreground' : 'text-primary'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${notif.read ? '' : 'text-foreground'}`}>{notif.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{notif.description}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDistanceToNow(notif.timestamp, { addSuffix: true })}</p>
+                      </div>
+                    </DropdownMenuItem>
+                  )
+                })
+              )}
+            </ScrollArea>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -19,6 +19,8 @@ interface ChatInterfaceProps {
   chatTitle: string;
   chatType: 'global' | 'party' | 'dm' | 'ai';
   chatId?: string;
+  // TODO: Implement a way to add notifications (e.g., via context or prop callback)
+  // onNewNotification?: (notification: AppNotification) => void;
 }
 
 interface UserProfileData {
@@ -36,13 +38,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isAiResponding, setIsAiResponding] = useState(false);
-  const scrollAreaViewportRef = useRef<HTMLDivElement>(null); // Ref for the viewport
+  const scrollAreaViewportRef = useRef<HTMLDivElement>(null); 
   const { toast } = useToast();
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
 
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
-    if (uid === 'ai-chatbot-uid') { // Handle AI user profile locally
+    if (uid === 'ai-chatbot-uid') { 
       const aiProfile = { uid, username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: 'https://placehold.co/40x40.png?text=AI', nameColor: '#8B5CF6' };
       setUsersCache(prev => ({...prev, [uid]: aiProfile}));
       return aiProfile;
@@ -52,7 +54,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile = { uid, ...userData };
+        // Ensure core properties exist, provide fallbacks if necessary
+        const profile: UserProfileData = {
+          uid,
+          username: userData.username || "unknown_user",
+          displayName: userData.displayName || "Unknown User",
+          avatar: userData.avatar,
+          nameColor: userData.nameColor,
+          title: userData.title,
+        };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
       }
@@ -69,13 +79,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       if (user) {
         fetchUserProfile(user.uid).then(profile => {
             if(profile) setCurrentUserProfile(profile);
+            else {
+                 // Fallback if profile fetch fails for current user
+                setCurrentUserProfile({
+                    uid: user.uid,
+                    username: user.email?.split('@')[0] || "user",
+                    displayName: user.displayName || "User",
+                    avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
+                });
+            }
         });
       } else {
         setCurrentUserProfile(null);
-        if (chatType !== 'ai') { // Don't clear AI messages on logout
+        if (chatType !== 'ai') { 
             setMessages([]);
-            setIsLoadingMessages(false);
         }
+        // Always set loading to false if user logs out and it's not AI chat
+        if (chatType !== 'ai') setIsLoadingMessages(false);
       }
     });
     return () => unsubscribeAuth();
@@ -103,9 +123,10 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
 
+    // For non-AI chats, require currentUser to proceed
     if (!currentUser) {
-        setIsLoadingMessages(false);
-        setMessages([]);
+        setIsLoadingMessages(false); // Stop loading if no user
+        setMessages([]); // Clear messages if no user
         return;
     }
 
@@ -123,12 +144,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
         const profile = await fetchUserProfile(senderUid);
+        
+        // Fallback for avatar
+        const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
+        const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
+
         return {
             id: msgEntry.key!,
             sender: profile?.displayName || msgData.senderName || "User",
             senderUid: senderUid,
             senderUsername: profile?.username || msgData.senderUsername || "user",
-            avatar: profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${(profile?.displayName || msgData.senderName || "U").charAt(0)}`,
+            avatar: avatarUrl,
             content: msgData.content,
             originalTimestamp: msgData.timestamp,
             timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -139,10 +165,19 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       });
       
       const resolvedMessages = await Promise.all(loadedMessagesPromises);
-      // Ensure correct order if Promise.all doesn't maintain it (though it should for the resulting array)
       resolvedMessages.sort((a,b) => (a.originalTimestamp || 0) - (b.originalTimestamp || 0));
       setMessages(resolvedMessages);
       setIsLoadingMessages(false);
+
+      // TODO: Implement notification generation logic here if document is hidden or chat is not active
+      // For example:
+      // if (document.hidden && onNewNotification && resolvedMessages.length > 0) {
+      //   const lastMessage = resolvedMessages[resolvedMessages.length - 1];
+      //   if (!lastMessage.isOwnMessage) {
+      //     onNewNotification({ /* ... notification object ... */ });
+      //   }
+      // }
+
     }, (error) => {
       console.error("Error fetching messages:", error);
       toast({ title: "Error", description: "Could not load messages.", variant: "destructive" });
@@ -157,7 +192,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   useEffect(() => {
     const viewport = scrollAreaViewportRef.current;
     if (viewport) {
-      // Timeout helps ensure DOM is updated before scrolling
       setTimeout(() => {
         viewport.scrollTop = viewport.scrollHeight;
       }, 0);
@@ -176,7 +210,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             sender: currentUserProfile.displayName,
             senderUid: currentUserProfile.uid,
             senderUsername: currentUserProfile.username,
-            avatar: currentUserProfile.avatar,
+            avatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
             content,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -196,7 +230,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             sender: 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
             senderUsername: 'realtalk_ai',
-            avatar: 'https://placehold.co/40x40.png?text=AI', // Placeholder
+            avatar: 'https://placehold.co/40x40.png?text=AI', 
             content: aiResult.response,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -204,15 +238,16 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderNameColor: '#8B5CF6'
           };
           setMessages(prev => [...prev, aiResponseMessage]);
-        } catch (error) {
-          console.error("Error calling AI chat flow:", error);
+        } catch (error: any) {
+          console.error("Error calling AI chat flow or processing its response:", error);
+          const errorMessageContent = error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.";
           const errorMessage: Message = {
             id: String(Date.now() + 1),
             sender: 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
             senderUsername: 'realtalk_ai',
             avatar: 'https://placehold.co/40x40.png?text=AI',
-            content: "Sorry, I encountered an error and could not get a response. Please try again.",
+            content: errorMessageContent,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
@@ -221,7 +256,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           setMessages(prev => [...prev, errorMessage]);
           toast({
             title: "AI Error",
-            description: "Could not get a response from the AI.",
+            description: "Could not get a response from the AI. " + (error.message || ""),
             variant: "destructive",
           });
         } finally {
@@ -255,11 +290,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   return (
     <Card className="flex flex-col h-full w-full shadow-lg rounded-lg overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between p-3 md:p-4 border-b">
-        <CardTitle className="text-base md:text-lg font-headline">{chatTitle}</CardTitle>
+        <CardTitle className="text-base md:text-lg font-headline">{chatTitle || "Loading Chat..."}</CardTitle>
         {chatType !== 'ai' && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" disabled={!currentUser}>
               <MoreVertical size={20} />
             </Button>
           </DropdownMenuTrigger>
@@ -281,7 +316,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             {chatType === 'global' && (
                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Chat info clicked (UI only)"})}><Info size={16} className="mr-2" /> Chat Info</DropdownMenuItem>
             )}
-            {/* Conditional separator was here, removed for simplicity, can be re-added if menu items vary more wildly */}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Block user clicked (UI only)"})}><UserX size={16} className="mr-2" /> Block User (mock)</DropdownMenuItem>
           </DropdownMenuContent>
@@ -289,12 +323,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         )}
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
-        {/*
-          Assign the ref to the ScrollArea's Viewport component directly if possible,
-          or use querySelector as done in the useEffect.
-          For ShadCN, direct ref to viewport is not straightforward, so querySelector is okay.
-          The ref on ScrollArea itself is for the root element.
-        */}
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef}>
           <div className="p-2 md:p-4 space-y-1 md:space-y-2">
             {isLoadingMessages ? (
@@ -311,11 +339,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 <ChatMessage key={msg.id} message={msg} />
               ))
             )}
+             {chatType === 'ai' && isAiResponding && (
+                <div className="flex items-center space-x-2 p-2.5">
+                    <Avatar className="h-8 w-8">
+                        <AvatarImage src={'https://placehold.co/40x40.png?text=AI'} alt={'RealTalk AI'} />
+                        <AvatarFallback>AI</AvatarFallback>
+                    </Avatar>
+                    <div className="flex items-center space-x-1">
+                        <span className="text-xs font-semibold" style={{color: '#8B5CF6'}}>RealTalk AI</span>
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                </div>
+            )}
           </div>
         </ScrollArea>
       </CardContent>
       <CardFooter className="p-0">
-        <ChatInput onSendMessage={handleSendMessage} disabled={chatType === 'ai' && isAiResponding} />
+        <ChatInput onSendMessage={handleSendMessage} disabled={(chatType === 'ai' && isAiResponding) || !currentUser} />
       </CardFooter>
     </Card>
   );

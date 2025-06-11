@@ -24,6 +24,8 @@ const AiChatOutputSchema = z.object({
 export type AiChatOutput = z.infer<typeof AiChatOutputSchema>;
 
 export async function aiChat(input: AiChatInput): Promise<AiChatOutput> {
+  // Ensure the aiChatFlow is called. If it throws, the error will propagate.
+  // The flow itself handles if the prompt output is undefined.
   return aiChatFlow(input);
 }
 
@@ -44,11 +46,16 @@ const aiChatFlow = ai.defineFlow(
     outputSchema: AiChatOutputSchema,
   },
   async (input: AiChatInput) => {
-    const {output} = await chatPrompt(input);
-    if (!output) {
-        console.error("AI chat prompt did not return a valid output for input:", input);
-        return { response: "I'm sorry, I couldn't generate a response at this moment. Please try again." };
+    try {
+      const {output} = await chatPrompt(input);
+      if (!output || typeof output.response !== 'string') {
+          console.error("AI chat prompt did not return a valid output. Output was:", output);
+          return { response: "I'm sorry, I couldn't generate a response at this moment. Please try again later." };
+      }
+      return output;
+    } catch (error) {
+        console.error("Error in aiChatFlow:", error);
+        return { response: "An unexpected error occurred while trying to reach the AI. Please check the console for details." };
     }
-    return output;
   }
 );
