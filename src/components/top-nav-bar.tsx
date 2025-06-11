@@ -26,6 +26,7 @@ import { ref, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -41,6 +42,7 @@ interface UserProfileData {
   avatar?: string;
   nameColor?: string;
   title?: string;
+  isShinyGold?: boolean;
 }
 
 interface AppNotification {
@@ -98,9 +100,10 @@ export function TopNavBar() {
               avatar: data.avatar,
               nameColor: data.nameColor,
               title: data.title,
+              isShinyGold: data.isShinyGold || false,
             });
           } else {
-            setUserProfileData({ displayName: user.displayName || "User" });
+            setUserProfileData({ displayName: user.displayName || "User", isShinyGold: false });
           }
         });
       } else {
@@ -145,7 +148,9 @@ export function TopNavBar() {
   };
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
-  const userTitleStyle = userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'};
+  const userDisplayNameStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userTitleStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'});
+
 
   return (
     <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground">
@@ -275,11 +280,11 @@ export function TopNavBar() {
               <>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none" style={{ color: userProfileData.nameColor || 'hsl(var(--foreground))' }}>
+                    <p className={cn("text-sm font-medium leading-none", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameStyle}>
                       {userProfileData.displayName}
                     </p>
                     {userProfileData.title && (
-                      <p className="text-xs leading-none italic" style={userTitleStyle}>
+                      <p className={cn("text-xs leading-none italic", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>
                         {userProfileData.title}
                       </p>
                     )}

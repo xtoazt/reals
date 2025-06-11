@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info, UsersSlash } from "lucide-react";
+import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info, UserX } from "lucide-react"; // Changed UsersSlash to UserX
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, sendPasswordResetEmail, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
@@ -174,7 +174,7 @@ export default function SettingsPage() {
           <Separator />
           <Link href="/dashboard/settings/blocked-users" passHref>
             <Button variant="outline" className="w-full md:w-auto">
-              <UsersSlash className="mr-2 h-4 w-4" /> Manage Blocked Users
+              <UserX className="mr-2 h-4 w-4" /> Manage Blocked Users 
             </Button>
           </Link>
         </CardContent>

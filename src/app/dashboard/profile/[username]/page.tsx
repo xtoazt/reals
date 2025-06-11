@@ -17,6 +17,7 @@ import { ref, get } from 'firebase/database';
 import { useRouter, useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 
 interface UserProfileData {
@@ -28,6 +29,7 @@ interface UserProfileData {
   bio: string;
   title?: string;
   nameColor?: string;
+  isShinyGold?: boolean;
   friendsCount?: number;
 }
 
@@ -66,8 +68,8 @@ export default function ViewProfilePage() {
 
     const fetchProfile = async () => {
       setIsLoading(true);
-      setIsLoadingFriendStatus(true); // Reset friend status loading on new profile fetch
-      setAreFriends(false); // Reset friend status
+      setIsLoadingFriendStatus(true); 
+      setAreFriends(false); 
 
       try {
         const usernameRef = ref(database, `usernames/${usernameFromParams.toLowerCase()}`);
@@ -103,24 +105,24 @@ export default function ViewProfilePage() {
             bio: data.bio || "No bio yet.",
             title: data.title,
             nameColor: data.nameColor,
+            isShinyGold: data.isShinyGold || false,
             friendsCount: data.friendsCount || 0,
           };
           setViewedUserProfile(profileData);
         } else {
           toast({ title: "Profile Data Missing", description: `Could not load full profile for @${usernameFromParams}.`, variant: "destructive" });
           setViewedUserProfile(null);
-          setIsLoading(false); // Stop loading if profile data is missing
+          setIsLoading(false); 
           notFound();
-          return; // Exit if profile data is missing
+          return; 
         }
 
-        // Check friendship status if currentUser and profileData are available and not the same user
         if (currentUser && profileData && currentUser.uid !== profileData.uid) {
           const friendRef = ref(database, `friends/${currentUser.uid}/${profileData.uid}`);
           const friendSnapshot = await get(friendRef);
           setAreFriends(friendSnapshot.exists());
         } else {
-          setAreFriends(false); // Not friends with self or if no current user
+          setAreFriends(false); 
         }
 
       } catch (error) {
@@ -133,8 +135,6 @@ export default function ViewProfilePage() {
       }
     };
 
-    // Only fetch profile if currentUser state is determined (either user or null)
-    // This prevents race conditions or unnecessary fetches before auth state is known.
     if (currentUser !== undefined) { 
        fetchProfile();
     }
@@ -150,8 +150,6 @@ export default function ViewProfilePage() {
   }
 
   if (!viewedUserProfile) {
-    // This state is typically handled by notFound() inside useEffect,
-    // but as a fallback or if notFound() is not used for some reason.
     return (
       <div className="flex flex-col justify-center items-center h-full space-y-4">
         <p className="text-xl">Profile could not be loaded.</p>
@@ -160,7 +158,8 @@ export default function ViewProfilePage() {
     );
   }
   
-  const userTitleStyle = viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'};
+  const userDisplayNameStyle = viewedUserProfile.isShinyGold ? {} : (viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userTitleStyle = viewedUserProfile.isShinyGold ? {} : (viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'});
   const avatarFallbackText = viewedUserProfile.displayName?.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName?.charAt(0) || (viewedUserProfile.username ? viewedUserProfile.username.charAt(0).toUpperCase() : 'U');
 
 
@@ -188,12 +187,12 @@ export default function ViewProfilePage() {
               </Avatar>
             </div>
             <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
-              <h1 className="text-3xl font-bold font-headline" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
+              <h1 className={cn("text-3xl font-bold font-headline", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameStyle}>
                 {viewedUserProfile.displayName}
               </h1>
               {viewedUserProfile.username && <p className="text-sm text-muted-foreground">@{viewedUserProfile.username}</p>}
               {viewedUserProfile.title && (
-                <p className="text-sm font-semibold italic" style={userTitleStyle}>
+                <p className={cn("text-sm font-semibold italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>
                   {viewedUserProfile.title}
                 </p>
               )}
@@ -216,7 +215,6 @@ export default function ViewProfilePage() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      {/* Button is effectively disabled but wrapped for tooltip */}
                       <span tabIndex={0}> 
                         <Button variant="outline" disabled style={{ pointerEvents: 'none' }}> 
                           <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
@@ -248,7 +246,7 @@ export default function ViewProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="displayNameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
-                <Input id="displayNameInput" value={viewedUserProfile.displayName} disabled />
+                <Input id="displayNameInput" value={viewedUserProfile.displayName} disabled className={cn(viewedUserProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userDisplayNameStyle}/>
               </div>
                <div>
                 <Label htmlFor="usernameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
@@ -256,11 +254,11 @@ export default function ViewProfilePage() {
               </div>
                {viewedUserProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput"><span className="text-sm font-semibold italic">Title:</span></Label>
-                  <Input id="titleInput" value={viewedUserProfile.title} disabled className="italic" style={userTitleStyle}/>
+                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>Title:</span></Label>
+                  <Input id="titleInput" value={viewedUserProfile.title} disabled className={cn("italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleStyle}/>
                 </div>
               )}
-              {viewedUserProfile.nameColor && (
+              {viewedUserProfile.nameColor && !viewedUserProfile.isShinyGold && (
                 <div>
                   <Label htmlFor="nameColorDisplay" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
                   <div className="flex items-center gap-2">
@@ -276,4 +274,3 @@ export default function ViewProfilePage() {
     </div>
   );
 }
-

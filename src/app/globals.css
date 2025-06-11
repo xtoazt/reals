@@ -202,6 +202,35 @@
     --nav-foreground: 40 20% 88%;
     --nav-border: 120 15% 25%;
   }
+
+  .text-shiny-gold {
+    font-weight: 700; /* bold */
+    background: linear-gradient(
+      90deg,
+      #BF953F, /* Dark Gold */
+      #FCF6BA, /* Light Gold */
+      #B38728, /* Medium Gold */
+      #FBF5B7, /* Light Yellow Gold */
+      #AA771C  /* Darker Gold */
+    );
+    background-size: 200% 100%; /* Make gradient wider than text for movement */
+    -webkit-background-clip: text;
+    -moz-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -moz-text-fill-color: transparent;
+    text-fill-color: transparent; /* Standard property */
+    animation: shiny-gold-text-anim 3s linear infinite;
+  }
+
+  @keyframes shiny-gold-text-anim {
+    0% {
+      background-position: 200% center;
+    }
+    100% {
+      background-position: -200% center;
+    }
+  }
 }
 
 @layer base {

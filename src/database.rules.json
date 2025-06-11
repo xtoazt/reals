@@ -15,6 +15,7 @@
         "bio": { ".validate": "newData.isString() && newData.val().length <= 1000" },
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
         "title": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+        "isShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
         "friendsCount": { ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0)" },
         "$other": { ".validate": false }
       }
@@ -38,6 +39,7 @@
           "senderAvatar": { ".validate": "newData.isString()" },
           "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
           "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+          "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
           "timestamp": { ".validate": "newData.val() === now" },
           "$other": { ".validate": false }
@@ -90,5 +92,3 @@
     }
   }
 }
-
-    

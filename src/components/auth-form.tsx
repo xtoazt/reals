@@ -47,6 +47,7 @@ export function AuthForm() {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = React.useState(false);
   const [showSpecialFields, setShowSpecialFields] = React.useState(false);
+  const [isShinyGoldMode, setIsShinyGoldMode] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState("login");
 
@@ -75,14 +76,25 @@ export function AuthForm() {
   React.useEffect(() => {
     if (watchSpecialCode === '1234') {
       setShowSpecialFields(true);
+      setIsShinyGoldMode(false);
       toast({
         title: 'Special Mode Activated!',
         description: 'You can now set a custom name color and title.',
       });
-    } else {
-      setShowSpecialFields(false);
+    } else if (watchSpecialCode === 'qwe') {
+      setShowSpecialFields(true); // Still allow title
+      setIsShinyGoldMode(true);
+      toast({
+        title: '✨ Shiny Gold Mode Activated! ✨',
+        description: 'Your name and title will be shiny gold and bold!',
+      });
+      signupForm.setValue('nameColor', ''); // Reset or clear nameColor as it's not used
     }
-  }, [watchSpecialCode, toast]);
+     else {
+      setShowSpecialFields(false);
+      setIsShinyGoldMode(false);
+    }
+  }, [watchSpecialCode, toast, signupForm]);
 
   async function onLoginSubmit(values: z.infer<typeof loginSchema>) {
     setIsLoading(true);
@@ -154,6 +166,7 @@ export function AuthForm() {
             bio: string;
             avatar: string;
             banner?: string;
+            isShinyGold?: boolean;
         } = {
             uid: user.uid,
             username: lowerCaseUsername, 
@@ -164,7 +177,11 @@ export function AuthForm() {
             bio: "New user! Ready to chat.",
         };
 
-        if (showSpecialFields && values.specialCode === '1234') {
+        if (isShinyGoldMode && values.specialCode === 'qwe') {
+            profileData.isShinyGold = true;
+            profileData.title = values.title || '';
+            // profileData.nameColor is intentionally omitted or can be set to null
+        } else if (showSpecialFields && values.specialCode === '1234') {
             profileData.nameColor = values.nameColor || '#FFA500'; 
             profileData.title = values.title || '';
         }
@@ -209,7 +226,7 @@ export function AuthForm() {
       <CardHeader>
         <CardTitle className="text-3xl font-headline text-center">real.</CardTitle>
         <CardDescription className="text-center">
-          Join or log in to connect fr.
+          connect fr
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -331,39 +348,39 @@ export function AuthForm() {
                   )}
                 />
 
+                {showSpecialFields && !isShinyGoldMode && (
+                  <FormField
+                    control={signupForm.control}
+                    name="nameColor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center">
+                          <Palette size={18} className="mr-2" /> Custom Name Color
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="color" {...field} disabled={isLoading}/>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 {showSpecialFields && (
-                  <>
-                    <FormField
-                      control={signupForm.control}
-                      name="nameColor"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="flex items-center">
-                            <Palette size={18} className="mr-2" /> Custom Name Color
-                          </FormLabel>
-                          <FormControl>
-                            <Input type="color" {...field} disabled={isLoading}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="title"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="flex items-center">
-                            <Sparkles size={18} className="mr-2" /> Custom Title
-                          </FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter your title (e.g., Pro User)" {...field} disabled={isLoading}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
+                  <FormField
+                    control={signupForm.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center">
+                          <Sparkles size={18} className="mr-2" /> Custom Title
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter your title (e.g., Pro User)" {...field} disabled={isLoading}/>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Signing Up...' : 'Sign Up'}
@@ -376,5 +393,3 @@ export function AuthForm() {
     </Card>
   );
 }
-
-    

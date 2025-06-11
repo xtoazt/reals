@@ -16,6 +16,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, update, get, off } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 
 interface UserProfile {
@@ -27,6 +28,7 @@ interface UserProfile {
   bio: string;
   title?: string;
   nameColor?: string;
+  isShinyGold?: boolean;
   friendsCount?: number; 
 }
 
@@ -67,6 +69,7 @@ export default function ProfilePage() {
               bio: data.bio || "No bio yet.",
               title: data.title,
               nameColor: data.nameColor,
+              isShinyGold: data.isShinyGold || false,
               friendsCount: data.friendsCount || 0, 
             });
             setBioEdit(data.bio || "");
@@ -80,6 +83,7 @@ export default function ProfilePage() {
               banner: "https://placehold.co/1200x300.png?text=Banner",
               bio: "New user! Ready to chat.",
               friendsCount: 0,
+              isShinyGold: false,
             };
             setUserProfile(basicProfile);
             setBioEdit(basicProfile.bio);
@@ -212,7 +216,9 @@ export default function ProfilePage() {
     );
   }
   
-  const userTitleStyle = userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'};
+  const userDisplayNameStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userTitleStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+
 
   return (
     <div className="space-y-6">
@@ -220,7 +226,7 @@ export default function ProfilePage() {
       <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
 
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-48 md:h-56"> {/* Increased banner height */}
+        <div className="relative bg-muted h-48 md:h-56"> 
           <Image 
             src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
             alt="Profile banner" 
@@ -260,13 +266,13 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Added padding for stacked mobile view */}
-              <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> 
+              <h1 className={cn("text-3xl font-bold font-headline", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameStyle}>
                 {userProfile.displayName}
               </h1>
               {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
-                <p className="text-sm font-semibold italic" style={userTitleStyle}>
+                <p className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>
                   {userProfile.title}
                 </p>
               )}
@@ -306,7 +312,7 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="displayNameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
-                <Input id="displayNameInput" value={userProfile.displayName} disabled />
+                <Input id="displayNameInput" value={userProfile.displayName} disabled className={cn(userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userDisplayNameStyle}/>
               </div>
                <div>
                 <Label htmlFor="usernameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
@@ -315,11 +321,11 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-sm font-semibold italic">Title:</span></Label>
-                  <Input id="titleInput" value={userProfile.title} disabled className="italic" style={userTitleStyle}/>
+                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>Title:</span></Label>
+                  <Input id="titleInput" value={userProfile.title} disabled className={cn("italic", userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleStyle}/>
                 </div>
               )}
-              {userProfile.nameColor && (
+              {userProfile.nameColor && !userProfile.isShinyGold && (
                 <div>
                   <Label htmlFor="nameColorDisplay" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
                   <div className="flex items-center gap-2">

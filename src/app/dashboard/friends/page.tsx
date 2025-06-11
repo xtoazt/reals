@@ -14,12 +14,14 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { ref, onValue, off, set, remove, serverTimestamp, get, query, update, runTransaction, increment } from "firebase/database";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 interface FriendRequest {
   id: string; // sender's UID
   senderUsername: string;
   senderAvatar?: string;
   senderNameColor?: string;
+  senderIsShinyGold?: boolean;
   timestamp: number;
 }
 
@@ -29,6 +31,7 @@ interface Friend {
   displayName: string;
   avatar?: string;
   nameColor?: string;
+  isShinyGold?: boolean;
   status?: string; 
 }
 
@@ -38,6 +41,7 @@ interface UserProfileData {
     displayName: string;
     avatar?: string;
     nameColor?: string;
+    isShinyGold?: boolean;
     friendsCount?: number;
 }
 
@@ -65,7 +69,11 @@ export default function FriendsPage() {
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile = { uid, ...userData };
+        const profile = { 
+            uid, 
+            ...userData, 
+            isShinyGold: userData.isShinyGold || false 
+        };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
       }
@@ -111,6 +119,7 @@ export default function FriendsPage() {
             senderUsername: senderProfile?.username || request.senderUsername || "Unknown User",
             senderAvatar: senderProfile?.avatar,
             senderNameColor: senderProfile?.nameColor,
+            senderIsShinyGold: senderProfile?.isShinyGold || false,
             timestamp: request.timestamp,
           });
         }
@@ -145,6 +154,7 @@ export default function FriendsPage() {
               displayName: profile.displayName,
               avatar: profile.avatar,
               nameColor: profile.nameColor,
+              isShinyGold: profile.isShinyGold || false,
               status: Math.random() > 0.5 ? 'Online' : 'Offline', 
             });
           }
@@ -280,18 +290,11 @@ export default function FriendsPage() {
       updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData;
       updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; 
 
-      // Transactionally update friend counts
       const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
       const senderFriendsCountRef = ref(database, `users/${senderUid}/friendsCount`);
 
-      await update(ref(database), updates); // Perform main updates first
+      await update(ref(database), updates); 
 
-      // Then update counts, these can be separate if the main update is more critical
-      // or combined if all must succeed/fail together (though update() is not fully transactional across all paths like runTransaction)
-      // For simplicity, we run them after. For true atomicity of counts with friendship, this part should also be in the 'updates' object
-      // if rules allowed direct increment or a Cloud Function handled it.
-      // Firebase RTDB increment is not a direct operation like Firestore, so we read, increment, write.
-      // Using runTransaction for each count for safety:
       await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
       await runTransaction(senderFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
       
@@ -331,7 +334,6 @@ export default function FriendsPage() {
         updates[`/blocked_users/${currentUser.uid}/${friendUid}`] = true;
         updates[`/users_blocked_by/${friendUid}/${currentUser.uid}`] = true;
         
-        // Check if they were friends to update counts
         const areFriendsRef = ref(database, `friends/${currentUser.uid}/${friendUid}`);
         const areFriendsSnap = await get(areFriendsRef);
         const wereFriends = areFriendsSnap.exists();
@@ -387,7 +389,7 @@ export default function FriendsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Manage Friends</CardTitle>
-          <CardDescription>Connect with others on RealTalk. connect fr.</CardDescription>
+          <CardDescription>connect fr</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
@@ -440,8 +442,8 @@ export default function FriendsPage() {
                         </Avatar>
                         <div className="flex-1">
                         <p 
-                            className="font-semibold cursor-pointer hover:underline" 
-                            style={{ color: friend.nameColor || 'hsl(var(--foreground))' }} 
+                            className={cn("font-semibold cursor-pointer hover:underline", friend.isShinyGold ? 'text-shiny-gold' : '')} 
+                            style={friend.isShinyGold ? {} : { color: friend.nameColor || 'hsl(var(--foreground))' }} 
                             onClick={() => handleViewProfile(friend.username)}
                         >
                             {friend.displayName}
@@ -489,8 +491,8 @@ export default function FriendsPage() {
                       </Avatar>
                       <div>
                         <p 
-                            className="font-medium cursor-pointer hover:underline" 
-                            style={{ color: request.senderNameColor || 'hsl(var(--foreground))' }} 
+                            className={cn("font-medium cursor-pointer hover:underline", request.senderIsShinyGold ? 'text-shiny-gold' : '')} 
+                            style={request.senderIsShinyGold ? {} : { color: request.senderNameColor || 'hsl(var(--foreground))' }} 
                             onClick={() => handleViewProfile(request.senderUsername)}
                         >
                             {request.senderUsername}
@@ -512,5 +514,3 @@ export default function FriendsPage() {
     </div>
   );
 }
-
-    

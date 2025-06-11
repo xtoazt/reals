@@ -14,7 +14,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
-import type { AvatarProps } from '@radix-ui/react-avatar'; // Ensure Avatar is imported if used directly
+import type { AvatarProps } from '@radix-ui/react-avatar'; 
 
 interface ChatInterfaceProps {
   chatTitle: string;
@@ -29,6 +29,7 @@ interface UserProfileData {
   avatar?: string;
   nameColor?: string;
   title?: string;
+  isShinyGold?: boolean;
 }
 
 const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
@@ -46,7 +47,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
     if (uid === 'ai-chatbot-uid') { 
-      const aiProfile = { uid, username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: 'https://placehold.co/40x40.png?text=AI', nameColor: '#8B5CF6' };
+      const aiProfile: UserProfileData = { uid, username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: 'https://placehold.co/40x40.png?text=AI', nameColor: '#8B5CF6', isShinyGold: false };
       setUsersCache(prev => ({...prev, [uid]: aiProfile}));
       return aiProfile;
     }
@@ -62,6 +63,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           avatar: userData.avatar,
           nameColor: userData.nameColor,
           title: userData.title,
+          isShinyGold: userData.isShinyGold || false,
         };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
@@ -85,6 +87,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                     username: user.email?.split('@')[0] || "user",
                     displayName: user.displayName || "User",
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
+                    isShinyGold: false,
                 });
             }
         });
@@ -114,7 +117,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6'
+            senderNameColor: '#8B5CF6',
+            senderIsShinyGold: false,
           }
         ]);
       }
@@ -157,6 +161,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             isOwnMessage: senderUid === currentUser?.uid,
             senderNameColor: profile?.nameColor || msgData.senderNameColor,
             senderTitle: profile?.title || msgData.senderTitle,
+            senderIsShinyGold: profile?.isShinyGold || msgData.senderIsShinyGold || false,
         };
       });
       
@@ -203,6 +208,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             isOwnMessage: true,
             senderNameColor: currentUserProfile.nameColor,
             senderTitle: currentUserProfile.title,
+            senderIsShinyGold: currentUserProfile.isShinyGold,
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -221,7 +227,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6'
+            senderNameColor: '#8B5CF6',
+            senderIsShinyGold: false,
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
@@ -237,7 +244,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6'
+            senderNameColor: '#8B5CF6',
+            senderIsShinyGold: false,
           };
           setMessages(prev => [...prev, errorMessage]);
           toast({
@@ -261,6 +269,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
       senderNameColor: currentUserProfile.nameColor,
       senderTitle: currentUserProfile.title,
+      senderIsShinyGold: currentUserProfile.isShinyGold || false,
       content,
       timestamp: serverTimestamp(),
     };
@@ -310,7 +319,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef}>
-          <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> {/* Reduced space-y for tighter message groups */}
+          <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> 
             {isLoadingMessages ? (
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -345,7 +354,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             )}
              {chatType === 'ai' && isAiResponding && (
                 <div className="flex items-center space-x-2 p-2.5">
-                    {/* Replaced Avatar component with direct Image for AI, or a fallback character */}
                     <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">AI</div>
                     <div className="flex items-center space-x-1">
                         <span className="text-xs font-semibold" style={{color: '#8B5CF6'}}>RealTalk AI</span>

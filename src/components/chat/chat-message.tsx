@@ -21,6 +21,7 @@ export interface Message {
   senderUsername?: string;
   senderNameColor?: string;
   senderTitle?: string;
+  senderIsShinyGold?: boolean;
   avatar?: string;
   content: string;
   timestamp: string; 
@@ -184,8 +185,14 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
     toast({
       title: (
         <div className="flex items-center">
-            <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
-            {message.senderTitle && <span className="ml-1.5 text-xs italic" style={{color: message.senderNameColor || 'hsl(var(--foreground))'}}>{message.senderTitle}</span>}
+            <span className={cn(message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={!message.senderIsShinyGold ? {color: message.senderNameColor || 'inherit'} : {}}>
+                @{message.senderUsername}
+            </span>
+            {message.senderTitle && 
+                <span className={cn("ml-1.5 text-xs italic", message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={!message.senderIsShinyGold ? {color: message.senderNameColor || 'hsl(var(--foreground))'} : {}}>
+                    {message.senderTitle}
+                </span>
+            }
         </div>
       ),
       description: `Display Name: ${message.sender}. What would you like to do?`,
@@ -240,8 +247,8 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-  const senderNameStyle = message.senderNameColor ? { color: message.senderNameColor } : {};
-  const senderTitleStyle = message.senderNameColor ? { color: message.senderNameColor } : { color: 'hsl(var(--foreground))' };
+  const senderNameStyle = (!message.senderIsShinyGold && message.senderNameColor) ? { color: message.senderNameColor } : {};
+  const senderTitleStyle = (!message.senderIsShinyGold && message.senderNameColor) ? { color: message.senderNameColor } : { color: 'hsl(var(--foreground))'};
 
 
   return (
@@ -273,16 +280,15 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
             <p
                 className={cn(
                   "text-xs font-semibold",
-                  message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
+                  message.senderIsShinyGold ? 'text-shiny-gold' : (message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline")
                 )}
                 style={senderNameStyle}
                 onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' ? showUserInteractionToast : undefined}
               >
                 {message.sender}
               </p>
-              {/* Removed redundant (@username) display */}
               {message.senderTitle && (
-                <p className="text-xs font-medium italic flex items-center shrink-0" style={senderTitleStyle}> 
+                <p className={cn("text-xs font-medium italic flex items-center shrink-0", message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={senderTitleStyle}> 
                   {message.senderTitle}
                 </p>
               )}
@@ -291,7 +297,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         </div>
         )}
         <div className={cn(
-            "text-sm text-foreground whitespace-pre-wrap break-words", // Ensure text uses foreground color
+            "text-sm text-foreground whitespace-pre-wrap break-words", 
             showAvatarAndSender ? "mt-1" : "mt-0" 
         )}>
           {renderContent()}
