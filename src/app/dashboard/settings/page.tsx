@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info } from "lucide-react";
+import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info, UsersSlash } from "lucide-react";
 import { auth, database } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, sendPasswordResetEmail, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userUsername, setUserUsername] = useState<string | null>(null);
+  const [isLoadingPasswordReset, setIsLoadingPasswordReset] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -38,6 +39,34 @@ export default function SettingsPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handlePasswordReset = async () => {
+    if (!currentUser || !currentUser.email) {
+      toast({
+        title: "Error",
+        description: "Could not send password reset email. User or email not found.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsLoadingPasswordReset(true);
+    try {
+      await sendPasswordResetEmail(auth, currentUser.email);
+      toast({
+        title: "Password Reset Email Sent",
+        description: `An email has been sent to ${currentUser.email} with instructions to reset your password.`,
+      });
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      toast({
+        title: "Password Reset Failed",
+        description: error.message || "Could not send password reset email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingPasswordReset(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -72,7 +101,14 @@ export default function SettingsPage() {
           </div>
           <div>
             <Label htmlFor="password" className="flex items-center"><KeyRound size={16} className="mr-2 opacity-70" />Password</Label>
-            <Button variant="outline" className="w-full md:w-auto" onClick={() => toast({ title: "Feature Info", description: "Password change functionality will be implemented here."})}>Change Password</Button>
+            <Button 
+              variant="outline" 
+              className="w-full md:w-auto" 
+              onClick={handlePasswordReset}
+              disabled={!currentUser || isLoadingPasswordReset}
+            >
+              {isLoadingPasswordReset ? "Sending..." : "Send Password Reset Email"}
+            </Button>
           </div>
           <Separator />
           <div>
@@ -136,7 +172,11 @@ export default function SettingsPage() {
           </div>
            <p className="text-xs text-muted-foreground">Control who can see your profile information (feature coming soon).</p>
           <Separator />
-          <Button variant="link" className="p-0 text-primary" onClick={() => toast({ title: "Feature Info", description: "Blocked users management will be available here."})}>Manage Blocked Users</Button>
+          <Link href="/dashboard/settings/blocked-users" passHref>
+            <Button variant="outline" className="w-full md:w-auto">
+              <UsersSlash className="mr-2 h-4 w-4" /> Manage Blocked Users
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 
