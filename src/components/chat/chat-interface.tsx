@@ -80,14 +80,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       setCurrentUser(user);
       if (user) {
         fetchUserProfile(user.uid).then(profile => {
-            if(profile) setCurrentUserProfile(profile);
-            else {
+            if(profile) {
+                setCurrentUserProfile(profile);
+            } else {
+                // Fallback profile if fetchUserProfile returns null (e.g., data missing in DB)
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: user.email?.split('@')[0] || "user",
                     displayName: user.displayName || "User",
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
+                    // nameColor and title will be undefined here by default
                 });
             }
         });
@@ -262,17 +265,25 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     const chatPath = `chats/${chatId}`;
     const messagesDbRef = ref(database, chatPath);
 
-    const newMessagePayload = {
+    const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
       senderName: currentUserProfile.displayName,
       senderUsername: currentUserProfile.username,
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
-      senderNameColor: currentUserProfile.nameColor,
-      senderTitle: currentUserProfile.title,
-      senderIsShinyGold: currentUserProfile.isShinyGold || false,
       content,
       timestamp: serverTimestamp(),
+      senderIsShinyGold: currentUserProfile.isShinyGold || false,
     };
+
+    // Conditionally add properties to avoid 'undefined'
+    const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
+    if (currentUserProfile.nameColor) {
+      newMessagePayload.senderNameColor = currentUserProfile.nameColor;
+    }
+    if (currentUserProfile.title) {
+      newMessagePayload.senderTitle = currentUserProfile.title;
+    }
+
 
     try {
       await push(messagesDbRef, newMessagePayload);
