@@ -27,7 +27,7 @@ interface UserProfile {
   bio: string;
   title?: string;
   nameColor?: string;
-  friendsCount?: number; // Added friendsCount
+  friendsCount?: number; 
 }
 
 const MAX_AVATAR_SIZE_BYTES = 500 * 1024; // 500KB
@@ -54,8 +54,7 @@ export default function ProfilePage() {
         setCurrentUser(user);
         setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
-        // No longer need separate friendsRef for count here, will rely on friendsCount from userProfileRef
-
+        
         const profileListener = onValue(userProfileRef, (profileSnapshot) => {
           const data = profileSnapshot.val();
           if (data) {
@@ -68,7 +67,7 @@ export default function ProfilePage() {
               bio: data.bio || "No bio yet.",
               title: data.title,
               nameColor: data.nameColor,
-              friendsCount: data.friendsCount || 0, // Use friendsCount from data
+              friendsCount: data.friendsCount || 0, 
             });
             setBioEdit(data.bio || "");
           } else {
@@ -80,11 +79,10 @@ export default function ProfilePage() {
               avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
               banner: "https://placehold.co/1200x300.png?text=Banner",
               bio: "New user! Ready to chat.",
-              friendsCount: 0, // Default to 0
+              friendsCount: 0,
             };
             setUserProfile(basicProfile);
             setBioEdit(basicProfile.bio);
-            // Consider creating a basic profile in DB if it doesn't exist
           }
           setIsLoading(false);
         }, (error) => {
@@ -222,7 +220,7 @@ export default function ProfilePage() {
       <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
 
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-48 md:h-56">
+        <div className="relative bg-muted h-48 md:h-56"> {/* Increased banner height */}
           <Image 
             src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
             alt="Profile banner" 
@@ -249,7 +247,7 @@ export default function ProfilePage() {
             <div className="relative">
               <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
                 <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture" key={userProfile.avatar}/>
-                <AvatarFallback className="text-4xl">{userProfile.displayName.split(' ').map(n => n[0]).join('') || userProfile.displayName.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="text-4xl">{userProfile.displayName?.split(' ').map(n => n[0]).join('') || userProfile.displayName?.charAt(0) || 'U'}</AvatarFallback>
               </Avatar>
               <Button 
                 variant="outline" 
@@ -262,7 +260,7 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Added padding for stacked mobile view */}
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {userProfile.displayName}
               </h1>
@@ -337,5 +335,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    

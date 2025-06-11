@@ -13,7 +13,7 @@ import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, get, off } from 'firebase/database'; // Removed onValue as we only fetch once
+import { ref, get } from 'firebase/database'; // Removed onValue as we only fetch once
 import { useRouter, useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -26,7 +26,7 @@ interface UserProfileData {
   bio: string;
   title?: string;
   nameColor?: string;
-  friendsCount?: number; // Added friendsCount
+  friendsCount?: number;
 }
 
 const generateDmChatId = (uid1: string, uid2: string): string => {
@@ -43,8 +43,7 @@ export default function ViewProfilePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [viewedUserProfile, setViewedUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isOwnProfile, setIsOwnProfile] = useState(false);
-
+  const [isOwnProfile, setIsOwnProfile] = useState(false); // This state seems unused, consider removal or using for logic
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -76,12 +75,10 @@ export default function ViewProfilePage() {
 
         const uid = usernameSnapshot.val();
         
-        // If the current user is viewing their own profile via /profile/[username], redirect to /profile
         if (currentUser && currentUser.uid === uid) {
-          router.replace('/dashboard/profile'); // Use replace to avoid adding to history
-          return; // Exit early, no need to fetch further
+          router.replace('/dashboard/profile'); 
+          return; 
         }
-
 
         const userProfileRef = ref(database, `users/${uid}`);
         const profileSnapshot = await get(userProfileRef);
@@ -93,14 +90,14 @@ export default function ViewProfilePage() {
             uid: uid,
             username: data.username,
             displayName: data.displayName,
-            avatar: data.avatar || `https://placehold.co/128x128.png?text=${data.displayName.substring(0,2).toUpperCase()}`,
+            avatar: data.avatar || `https://placehold.co/128x128.png?text=${data.displayName?.substring(0,2).toUpperCase() || '??'}`,
             banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
             bio: data.bio || "No bio yet.",
             title: data.title,
             nameColor: data.nameColor,
-            friendsCount: data.friendsCount || 0, // Use friendsCount from profile data
+            friendsCount: data.friendsCount || 0,
           });
-          setIsOwnProfile(currentUser?.uid === uid);
+          // setIsOwnProfile(currentUser?.uid === uid); // Redundant if redirecting
         } else {
           toast({ title: "Profile Data Missing", description: `Could not load full profile for @${usernameFromParams}.`, variant: "destructive" });
           setViewedUserProfile(null);
@@ -115,13 +112,12 @@ export default function ViewProfilePage() {
       }
     };
 
-    // Only fetch profile if currentUser is loaded, to handle redirection logic correctly
-    if (currentUser !== undefined) { // Check if auth state is resolved
+    if (currentUser !== undefined) { 
        fetchProfile();
     }
   }, [usernameFromParams, toast, router, currentUser]); 
 
-  if (isLoading || currentUser === undefined) { // Also show loader while currentUser is resolving
+  if (isLoading || currentUser === undefined) { 
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -130,8 +126,6 @@ export default function ViewProfilePage() {
   }
 
   if (!viewedUserProfile) {
-    // notFound() would have been called if profile was truly not found.
-    // This state might occur if there was an error after initial loading checks.
     return (
       <div className="flex flex-col justify-center items-center h-full space-y-4">
         <p className="text-xl">Profile could not be loaded.</p>
@@ -140,15 +134,9 @@ export default function ViewProfilePage() {
     );
   }
   
-  // This case should be handled by the redirect within useEffect, but as a fallback UI:
-  if (isOwnProfile && currentUser?.uid === viewedUserProfile.uid) {
-     return (
-        <div className="flex flex-col justify-center items-center h-full space-y-4">
-            <p className="text-xl">Redirecting to your editable profile...</p>
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-     );
-  }
+  // This case is handled by the redirect within useEffect
+  // if (isOwnProfile && currentUser?.uid === viewedUserProfile.uid) { ... }
+
 
   const userTitleStyle = viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'};
 
@@ -172,10 +160,10 @@ export default function ViewProfilePage() {
             <div className="relative">
               <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
                 <AvatarImage src={viewedUserProfile.avatar} alt={viewedUserProfile.displayName} data-ai-hint="profile picture" key={viewedUserProfile.avatar}/>
-                <AvatarFallback className="text-4xl">{viewedUserProfile.displayName.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="text-4xl">{viewedUserProfile.displayName?.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName?.charAt(0) || 'U'}</AvatarFallback>
               </Avatar>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Ensure this div has enough space */}
               <h1 className="text-3xl font-bold font-headline" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {viewedUserProfile.displayName}
               </h1>
@@ -189,7 +177,7 @@ export default function ViewProfilePage() {
                 <Users size={16} className="mr-1"/> Friends: {viewedUserProfile.friendsCount ?? 0}
               </div>
             </div>
-            {!isOwnProfile && currentUser && viewedUserProfile.uid !== currentUser.uid && (
+            {currentUser && viewedUserProfile.uid !== currentUser.uid && (
                  <Link href={`/dashboard/chat/${generateDmChatId(currentUser.uid, viewedUserProfile.uid)}`} passHref>
                     <Button variant="outline">
                         <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
@@ -242,5 +230,3 @@ export default function ViewProfilePage() {
     </div>
   );
 }
-
-    

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
-import { ref, set, get, serverTimestamp, update, remove } from 'firebase/database';
+import { ref, set, get, serverTimestamp, update, remove, runTransaction } from 'firebase/database';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
@@ -130,13 +130,17 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
     
     toast({
         title: `Blocking @${targetUsername}`,
-        description: "This will remove them as a friend and prevent future friend requests.",
+        description: "This will remove them as a friend and prevent further interaction.",
     });
 
     try {
         const updates: { [key: string]: any } = {};
         updates[`/blocked_users/${currentUser.uid}/${targetUid}`] = true;
         updates[`/users_blocked_by/${targetUid}/${currentUser.uid}`] = true;
+        
+        const areFriendsRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
+        const areFriendsSnap = await get(areFriendsRef);
+        const wereFriends = areFriendsSnap.exists();
 
         updates[`/friends/${currentUser.uid}/${targetUid}`] = null;
         updates[`/friends/${targetUid}/${currentUser.uid}`] = null;
@@ -146,53 +150,61 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         
         await update(ref(database), updates);
 
-        toast({ title: "User Blocked", description: `You have blocked @${targetUsername}.` });
+        if (wereFriends) {
+            const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
+            const targetUserFriendsCountRef = ref(database, `users/${targetUid}/friendsCount`);
+            await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+            await runTransaction(targetUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+        }
+        toast({ title: "User Blocked", description: `You have blocked @${targetUsername}. They have been removed from your friends list.` });
     } catch (error: any) {
         console.error("Error blocking user from chat:", error);
         toast({ title: "Error", description: `Could not block user: ${error.message}`, variant: "destructive" });
     }
   };
 
-  const handleProfileInteraction = (username?: string) => {
-    if (message.isOwnMessage || !message.senderUid || !message.senderUsername) {
-        if (message.senderUid !== 'ai-chatbot-uid') { 
-            if (currentUser?.uid === message.senderUid) router.push('/dashboard/profile');
-            else toast({ title: "User Info", description: "Cannot navigate to this user's profile."});
+  const handleViewUserProfile = (username?: string) => {
+    if (username && message.senderUid !== 'ai-chatbot-uid') {
+        router.push(`/dashboard/profile/${username}`);
+    } else if (message.senderUid === 'ai-chatbot-uid') {
+        toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
+    } else {
+        toast({ title: "User Info", description: "Cannot navigate to this user's profile."});
+    }
+  };
+
+  const showUserInteractionToast = () => {
+    if (message.isOwnMessage || !message.senderUid || !message.senderUsername || message.senderUid === 'ai-chatbot-uid') {
+        if (message.senderUid === 'ai-chatbot-uid') {
+            toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
         }
         return;
     }
-    if (message.senderUid === 'ai-chatbot-uid') {
-        toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
-        return;
-    }
     
-    if (username) {
-        router.push(`/dashboard/profile/${username}`);
-    } else {
-         toast({
-          title: (
-            <div className="flex items-center">
-                <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
-                {message.senderTitle && <span className="ml-1.5 text-xs italic" style={{color: message.senderNameColor || 'hsl(var(--foreground))'}}>{message.senderTitle}</span>}
-            </div>
-          ),
-          description: `Display Name: ${message.sender}. Click an action below.`,
-          action: (
-            <div className="flex flex-col gap-2 mt-2">
-              <Button variant="outline" size="sm" onClick={() => message.senderUsername ? router.push(`/dashboard/profile/${message.senderUsername}`) : toast({title: "Error", description: "Username not found."})}>
-                <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
-                <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => handleBlockUserFromChat(message.senderUid, message.senderUsername)}>
-                <UserX className="mr-2 h-4 w-4" /> Block User
-              </Button>
-            </div>
-          ),
-        });
-    }
+    toast({
+      title: (
+        <div className="flex items-center">
+            <span style={{color: message.senderNameColor || 'inherit'}}>@{message.senderUsername}</span>
+            {message.senderTitle && <span className="ml-1.5 text-xs italic" style={{color: message.senderNameColor || 'hsl(var(--foreground))'}}>{message.senderTitle}</span>}
+        </div>
+      ),
+      description: `Display Name: ${message.sender}. What would you like to do?`,
+      action: (
+        <div className="flex flex-col gap-2 mt-2">
+          <Button variant="outline" size="sm" onClick={() => handleViewUserProfile(message.senderUsername)}>
+            <UserProfileIcon className="mr-2 h-4 w-4" /> View Profile
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleAddFriendFromChat(message.senderUid, message.senderUsername)}>
+            <UserPlus className="mr-2 h-4 w-4" /> Add Friend
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => handleBlockUserFromChat(message.senderUid, message.senderUsername)}>
+            <UserX className="mr-2 h-4 w-4" /> Block User
+          </Button>
+        </div>
+      ),
+    });
   };
+
 
   const renderContent = () => {
     const parts = message.content.split(/(\s+)/); 
@@ -220,7 +232,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
               </a>
             );
         } catch (e) {
-            return part;
+            return part; // if URL parsing fails, render as text
         }
       }
       return part;
@@ -249,7 +261,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
       )}
     >
       {!message.isOwnMessage && showAvatarAndSender && (
-        <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={() => handleProfileInteraction(message.senderUsername)}>
+        <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={() => handleViewUserProfile(message.senderUsername)}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
@@ -264,13 +276,11 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
                   message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline"
                 )}
                 style={senderNameStyle}
-                onClick={!message.isOwnMessage ? () => handleProfileInteraction(message.senderUsername) : undefined}
+                onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' ? showUserInteractionToast : undefined}
               >
                 {message.sender}
               </p>
-              {!message.isOwnMessage && message.senderUsername && message.senderUid !== 'ai-chatbot-uid' && (
-                <p className="text-xs text-muted-foreground font-normal">(@{message.senderUsername})</p>
-              )}
+              {/* Removed redundant (@username) display */}
               {message.senderTitle && (
                 <p className="text-xs font-medium italic flex items-center shrink-0" style={senderTitleStyle}> 
                   {message.senderTitle}
@@ -281,7 +291,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         </div>
         )}
         <div className={cn(
-            "text-sm text-foreground whitespace-pre-wrap break-words",
+            "text-sm text-foreground whitespace-pre-wrap break-words", // Ensure text uses foreground color
             showAvatarAndSender ? "mt-1" : "mt-0" 
         )}>
           {renderContent()}
