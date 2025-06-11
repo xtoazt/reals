@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
 import { auth, database } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { ref, onValue, off, set, remove, serverTimestamp, get, query, update, runTransaction } from "firebase/database";
+import { ref, onValue, off, set, remove, serverTimestamp, get, query, update, runTransaction, increment } from "firebase/database";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -38,6 +38,7 @@ interface UserProfileData {
     displayName: string;
     avatar?: string;
     nameColor?: string;
+    friendsCount?: number;
 }
 
 export default function FriendsPage() {
@@ -154,7 +155,7 @@ export default function FriendsPage() {
       }
       setIsLoadingFriends(false);
     }, (error) => {
-        console.error("Error fetching friends:", error);
+        console.error("Error fetching friends list:", error);
         toast({title: "Error", description: "Could not load friends list.", variant: "destructive"});
         setIsLoadingFriends(false);
     });
@@ -279,11 +280,23 @@ export default function FriendsPage() {
       updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData;
       updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; 
 
-      await update(ref(database), updates);
+      // Transactionally update friend counts
+      const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
+      const senderFriendsCountRef = ref(database, `users/${senderUid}/friendsCount`);
 
+      await update(ref(database), updates); // Perform main updates first
+
+      // Then update counts, these can be separate if the main update is more critical
+      // or combined if all must succeed/fail together (though update() is not fully transactional across all paths like runTransaction)
+      // For simplicity, we run them after. For true atomicity of counts with friendship, this part should also be in the 'updates' object
+      // if rules allowed direct increment or a Cloud Function handled it.
+      // Firebase RTDB increment is not a direct operation like Firestore, so we read, increment, write.
+      // Using runTransaction for each count for safety:
+      await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
+      await runTransaction(senderFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
+      
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${senderUsername}.`});
-    } catch (error: any)
-{
+    } catch (error: any) {
       console.error("Error accepting friend request:", error);
       toast({ title: "Error", description: `Could not accept friend request: ${error.message}`, variant: "destructive" });
     }
@@ -317,6 +330,11 @@ export default function FriendsPage() {
         const updates: { [key: string]: any } = {};
         updates[`/blocked_users/${currentUser.uid}/${friendUid}`] = true;
         updates[`/users_blocked_by/${friendUid}/${currentUser.uid}`] = true;
+        
+        // Check if they were friends to update counts
+        const areFriendsRef = ref(database, `friends/${currentUser.uid}/${friendUid}`);
+        const areFriendsSnap = await get(areFriendsRef);
+        const wereFriends = areFriendsSnap.exists();
 
         updates[`/friends/${currentUser.uid}/${friendUid}`] = null;
         updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
@@ -325,6 +343,13 @@ export default function FriendsPage() {
         updates[`/friend_requests/${friendUid}/${currentUser.uid}`] = null;
         
         await update(ref(database), updates);
+
+        if (wereFriends) {
+            const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
+            const targetUserFriendsCountRef = ref(database, `users/${friendUid}/friendsCount`);
+            await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+            await runTransaction(targetUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+        }
 
         toast({ title: "User Blocked", description: `You have blocked ${friendUsername}. They have been removed from your friends list.` });
     } catch (error: any) {
@@ -487,3 +512,5 @@ export default function FriendsPage() {
     </div>
   );
 }
+
+    

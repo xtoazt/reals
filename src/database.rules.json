@@ -15,24 +15,21 @@
         "bio": { ".validate": "newData.isString() && newData.val().length <= 1000" },
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
         "title": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+        "friendsCount": { ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0)" },
         "$other": { ".validate": false }
       }
     },
     "usernames": {
       "$username": {
-        ".read": true, // Public read for username availability check
-        ".write": "auth != null && newData.isString() && newData.val().length > 0", // User can write their UID here to claim username
-        ".validate": "newData.isString() && newData.val().length > 10" // UID length validation
+        ".read": true, 
+        ".write": "auth != null && newData.isString() && newData.val().length > 0",
+        ".validate": "newData.isString() && newData.val().length > 10"
       }
     },
     "chats": {
       "$chatId": {
-        // DM: If chatID contains user's UID AND an underscore (e.g. "dm_uid1_uid2")
-        // Global: If chatID is "global"
-        // AI Chatbot: If chatID is "ai-chatbot" (client-side only, no DB writes from AI chat)
-        // Party chats (e.g. "party-12345") are currently covered by the "else" condition.
         ".read": "auth != null && ( ($chatId.contains(auth.uid) && $chatId.contains('_')) || $chatId == 'global' || $chatId == 'ai-chatbot' || (!$chatId.contains('_') && $chatId != 'global' && $chatId != 'ai-chatbot') )",
-        ".write": "auth != null && ( ($chatId.contains(auth.uid) && $chatId.contains('_')) || $chatId == 'global' || (!$chatId.contains('_') && $chatId != 'global' && $chatId != 'ai-chatbot') )", // AI chat is client-side, no DB writes for it typically from user
+        ".write": "auth != null && ( ($chatId.contains(auth.uid) && $chatId.contains('_')) || $chatId == 'global' || (!$chatId.contains('_') && $chatId != 'global' && $chatId != 'ai-chatbot') )",
         "$messageId": {
           ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
           "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
@@ -49,11 +46,9 @@
     },
     "friend_requests": {
       "$receiver_uid": {
-        ".read": "auth != null && auth.uid === $receiver_uid", // User can read all requests sent to them
+        ".read": "auth != null && auth.uid === $receiver_uid",
         "$sender_uid": {
-          // Sender or receiver can read a specific request.
           ".read": "auth != null && (auth.uid === $receiver_uid || auth.uid === $sender_uid)",
-          // Sender creates request (newData exists, !data); Receiver deletes request (!newData, data exists)
           ".write": "auth != null && ( (newData.exists() && !data.exists() && auth.uid === $sender_uid) || (!newData.exists() && data.exists() && auth.uid === $receiver_uid) )",
           ".validate": "!newData.exists() || (newData.hasChildren(['senderUsername', 'senderUid', 'timestamp', 'status']) && newData.child('senderUid').val() === $sender_uid)",
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0" },
@@ -66,9 +61,8 @@
     },
     "friends": {
       "$user_uid": {
-        ".read": "auth != null && auth.uid === $user_uid", // User can read their own friend list
+        ".read": "auth != null && auth.uid === $user_uid",
         "$friend_uid": {
-          // User can write to their own friend list, or be added to another's (by that other user)
           ".write": "auth != null && (auth.uid === $user_uid || auth.uid === $friend_uid)",
           ".validate": "newData.hasChildren(['since'])",
           "since": {".validate": "newData.val() === now || newData.isNumber()"},
@@ -78,18 +72,17 @@
     },
     "blocked_users": {
       "$blocker_uid": {
-        ".read": "auth != null && auth.uid === $blocker_uid", // User can read who they blocked
+        ".read": "auth != null && auth.uid === $blocker_uid", 
         "$blocked_uid": {
-          ".write": "auth != null && auth.uid === $blocker_uid", // User can write to their own blocked list
+          ".write": "auth != null && auth.uid === $blocker_uid", 
           ".validate": "newData.isBoolean()"
         }
       }
     },
     "users_blocked_by": {
       "$blocked_uid": {
-        ".read": "auth != null && auth.uid === $blocked_uid", // User can read who blocked them
+        ".read": "auth != null && auth.uid === $blocked_uid", 
         "$blocker_uid": {
-           // This path is written to by the blocker, not the blocked user.
           ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
         }
@@ -97,3 +90,5 @@
     }
   }
 }
+
+    

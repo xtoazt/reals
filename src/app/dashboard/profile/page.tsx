@@ -27,7 +27,7 @@ interface UserProfile {
   bio: string;
   title?: string;
   nameColor?: string;
-  friendsCount?: number;
+  friendsCount?: number; // Added friendsCount
 }
 
 const MAX_AVATAR_SIZE_BYTES = 500 * 1024; // 500KB
@@ -54,86 +54,47 @@ export default function ProfilePage() {
         setCurrentUser(user);
         setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
-        const friendsRef = ref(database, `friends/${user.uid}`);
+        // No longer need separate friendsRef for count here, will rely on friendsCount from userProfileRef
 
         const profileListener = onValue(userProfileRef, (profileSnapshot) => {
           const data = profileSnapshot.val();
-          get(friendsRef).then(friendsSnapshot => {
-            let friendsCount = 0;
-            if (friendsSnapshot.exists()) {
-                friendsCount = Object.keys(friendsSnapshot.val()).length;
-            }
-
-            if (data) {
-                setUserProfile({
-                uid: user.uid,
-                username: data.username || (user.email?.split('@')[0] || "User"),
-                displayName: data.displayName || user.displayName || "User",
-                avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
-                banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
-                bio: data.bio || "No bio yet.",
-                title: data.title,
-                nameColor: data.nameColor,
-                friendsCount: friendsCount,
-                });
-                setBioEdit(data.bio || "");
-            } else {
-                const fallbackUsername = user.email?.split('@')[0] || "User";
-                const basicProfile: UserProfile = {
-                    uid: user.uid,
-                    username: fallbackUsername,
-                    displayName: user.displayName || fallbackUsername,
-                    avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
-                    banner: "https://placehold.co/1200x300.png?text=Banner",
-                    bio: "New user! Ready to chat.",
-                    friendsCount: friendsCount,
-                };
-                setUserProfile(basicProfile);
-                setBioEdit(basicProfile.bio);
-                if (!data?.username) {
-                  console.log("User profile data not found, consider onboarding.");
-                }
-            }
-            setIsLoading(false);
-          }).catch(error => {
-            console.error("Error fetching friends count:", error);
-            if (profileSnapshot.val()) { 
-                const data = profileSnapshot.val();
-                setUserProfile({ 
-                    uid: user.uid,
-                    username: data.username || (user.email?.split('@')[0] || "User"),
-                    displayName: data.displayName || user.displayName || "User",
-                    avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
-                    banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
-                    bio: data.bio || "No bio yet.",
-                    title: data.title,
-                    nameColor: data.nameColor,
-                    friendsCount: 0 
-                });
-                setBioEdit(data.bio || "");
-            }
-            setIsLoading(false);
-          });
+          if (data) {
+            setUserProfile({
+              uid: user.uid,
+              username: data.username || (user.email?.split('@')[0] || "User"),
+              displayName: data.displayName || user.displayName || "User",
+              avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
+              banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
+              bio: data.bio || "No bio yet.",
+              title: data.title,
+              nameColor: data.nameColor,
+              friendsCount: data.friendsCount || 0, // Use friendsCount from data
+            });
+            setBioEdit(data.bio || "");
+          } else {
+            const fallbackUsername = user.email?.split('@')[0] || "User";
+            const basicProfile: UserProfile = {
+              uid: user.uid,
+              username: fallbackUsername,
+              displayName: user.displayName || fallbackUsername,
+              avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
+              banner: "https://placehold.co/1200x300.png?text=Banner",
+              bio: "New user! Ready to chat.",
+              friendsCount: 0, // Default to 0
+            };
+            setUserProfile(basicProfile);
+            setBioEdit(basicProfile.bio);
+            // Consider creating a basic profile in DB if it doesn't exist
+          }
+          setIsLoading(false);
         }, (error) => {
-            console.error("Error fetching profile data:", error);
-            toast({ title: "Error", description: "Could not fetch profile data.", variant: "destructive"});
-            setIsLoading(false);
+          console.error("Error fetching profile data:", error);
+          toast({ title: "Error", description: "Could not fetch profile data.", variant: "destructive"});
+          setIsLoading(false);
         });
         
-        const friendsListener = onValue(friendsRef, (snapshot) => {
-          let friendsCount = 0;
-          if (snapshot.exists()) {
-            friendsCount = Object.keys(snapshot.val()).length;
-          }
-          setUserProfile(prev => prev ? { ...prev, friendsCount } : null);
-        }, (error) => {
-            console.error("Error listening to friends count:", error);
-             setUserProfile(prev => prev ? { ...prev, friendsCount: 0 } : null);
-        });
-
         return () => {
-            off(userProfileRef, 'value', profileListener);
-            off(friendsRef, 'value', friendsListener);
+          off(userProfileRef, 'value', profileListener);
         };
 
       } else {
@@ -253,6 +214,8 @@ export default function ProfilePage() {
     );
   }
   
+  const userTitleStyle = userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'};
+
   return (
     <div className="space-y-6">
       <input type="file" ref={avatarInputRef} onChange={handleAvatarFileChange} accept="image/*" style={{ display: 'none' }} />
@@ -299,13 +262,13 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Increased pt-4 for mobile */}
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
               <h1 className="text-3xl font-bold font-headline" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {userProfile.displayName}
               </h1>
               {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
-                <p className="text-sm font-semibold italic" style={{ color: userProfile.nameColor || 'hsl(var(--foreground))' }}>
+                <p className="text-sm font-semibold italic" style={userTitleStyle}>
                   {userProfile.title}
                 </p>
               )}
@@ -354,8 +317,8 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-sm font-semibold italic" style={{color: userProfile.nameColor || 'hsl(var(--foreground))'}}>Title:</span></Label>
-                  <Input id="titleInput" value={userProfile.title} disabled className="italic" style={{color: userProfile.nameColor || 'hsl(var(--foreground))'}}/>
+                  <Label htmlFor="titleInput" className="flex items-center"><span className="text-sm font-semibold italic">Title:</span></Label>
+                  <Input id="titleInput" value={userProfile.title} disabled className="italic" style={userTitleStyle}/>
                 </div>
               )}
               {userProfile.nameColor && (
@@ -374,3 +337,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    

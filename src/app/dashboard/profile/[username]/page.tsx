@@ -13,7 +13,7 @@ import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, get, off } from 'firebase/database';
+import { ref, get, off } from 'firebase/database'; // Removed onValue as we only fetch once
 import { useRouter, useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -26,7 +26,7 @@ interface UserProfileData {
   bio: string;
   title?: string;
   nameColor?: string;
-  friendsCount?: number;
+  friendsCount?: number; // Added friendsCount
 }
 
 const generateDmChatId = (uid1: string, uid2: string): string => {
@@ -75,9 +75,11 @@ export default function ViewProfilePage() {
         }
 
         const uid = usernameSnapshot.val();
+        
+        // If the current user is viewing their own profile via /profile/[username], redirect to /profile
         if (currentUser && currentUser.uid === uid) {
-          router.replace('/dashboard/profile');
-          return;
+          router.replace('/dashboard/profile'); // Use replace to avoid adding to history
+          return; // Exit early, no need to fetch further
         }
 
 
@@ -86,13 +88,7 @@ export default function ViewProfilePage() {
 
         if (profileSnapshot.exists()) {
           const data = profileSnapshot.val();
-          const friendsRef = ref(database, `friends/${uid}`);
-          const friendsSnapshot = await get(friendsRef);
-          let friendsCount = 0;
-          if (friendsSnapshot.exists()) {
-            friendsCount = Object.keys(friendsSnapshot.val()).length;
-          }
-
+          
           setViewedUserProfile({
             uid: uid,
             username: data.username,
@@ -102,7 +98,7 @@ export default function ViewProfilePage() {
             bio: data.bio || "No bio yet.",
             title: data.title,
             nameColor: data.nameColor,
-            friendsCount: friendsCount,
+            friendsCount: data.friendsCount || 0, // Use friendsCount from profile data
           });
           setIsOwnProfile(currentUser?.uid === uid);
         } else {
@@ -119,10 +115,13 @@ export default function ViewProfilePage() {
       }
     };
 
-    fetchProfile();
+    // Only fetch profile if currentUser is loaded, to handle redirection logic correctly
+    if (currentUser !== undefined) { // Check if auth state is resolved
+       fetchProfile();
+    }
   }, [usernameFromParams, toast, router, currentUser]); 
 
-  if (isLoading) {
+  if (isLoading || currentUser === undefined) { // Also show loader while currentUser is resolving
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -131,14 +130,17 @@ export default function ViewProfilePage() {
   }
 
   if (!viewedUserProfile) {
+    // notFound() would have been called if profile was truly not found.
+    // This state might occur if there was an error after initial loading checks.
     return (
       <div className="flex flex-col justify-center items-center h-full space-y-4">
-        <p className="text-xl">Profile not found.</p>
+        <p className="text-xl">Profile could not be loaded.</p>
         <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
       </div>
     );
   }
   
+  // This case should be handled by the redirect within useEffect, but as a fallback UI:
   if (isOwnProfile && currentUser?.uid === viewedUserProfile.uid) {
      return (
         <div className="flex flex-col justify-center items-center h-full space-y-4">
@@ -147,6 +149,8 @@ export default function ViewProfilePage() {
         </div>
      );
   }
+
+  const userTitleStyle = viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'};
 
   return (
     <div className="space-y-6">
@@ -171,13 +175,13 @@ export default function ViewProfilePage() {
                 <AvatarFallback className="text-4xl">{viewedUserProfile.displayName.split(' ').map(n => n[0]).join('') || viewedUserProfile.displayName.charAt(0)}</AvatarFallback>
               </Avatar>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> {/* Increased pt-4 for mobile */}
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
               <h1 className="text-3xl font-bold font-headline" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
                 {viewedUserProfile.displayName}
               </h1>
               {viewedUserProfile.username && <p className="text-sm text-muted-foreground">@{viewedUserProfile.username}</p>}
               {viewedUserProfile.title && (
-                <p className="text-sm font-semibold italic" style={{ color: viewedUserProfile.nameColor || 'hsl(var(--foreground))' }}>
+                <p className="text-sm font-semibold italic" style={userTitleStyle}>
                   {viewedUserProfile.title}
                 </p>
               )}
@@ -218,8 +222,8 @@ export default function ViewProfilePage() {
               </div>
                {viewedUserProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput"><span className="text-sm font-semibold italic" style={{color: viewedUserProfile.nameColor || 'hsl(var(--foreground))'}}>Title:</span></Label>
-                  <Input id="titleInput" value={viewedUserProfile.title} disabled className="italic" style={{color: viewedUserProfile.nameColor || 'hsl(var(--foreground))'}}/>
+                  <Label htmlFor="titleInput"><span className="text-sm font-semibold italic">Title:</span></Label>
+                  <Input id="titleInput" value={viewedUserProfile.title} disabled className="italic" style={userTitleStyle}/>
                 </div>
               )}
               {viewedUserProfile.nameColor && (
@@ -238,3 +242,5 @@ export default function ViewProfilePage() {
     </div>
   );
 }
+
+    
