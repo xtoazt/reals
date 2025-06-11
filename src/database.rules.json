@@ -8,7 +8,7 @@
         ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio'])",
         "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
         "username": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
-        "displayName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+        "displayName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50 && newData.val().matches(/^[a-zA-Z0-9_ .]+$/)" },
         "email": { ".validate": "newData.isString() && newData.val().length > 0" },
         "avatar": { ".validate": "newData.isString()" },
         "banner": { ".validate": "newData.isString()" },
@@ -23,14 +23,19 @@
     "usernames": {
       "$username": {
         ".read": true,
-        ".write": "auth != null && newData.isString() && newData.val().length > 0",
+        // User can only write (create or delete) their own username mapping.
+        // For creation: newData must exist, data must not, and the value written must be their UID.
+        // For deletion: newData must not exist, data must, and the existing value must be their UID.
+        ".write": "auth != null && ( (newData.exists() && !data.exists() && newData.val() === auth.uid) || (!newData.exists() && data.exists() && data.val() === auth.uid) )",
+        // Validates that the value being written (the UID) is a string and reasonably long.
         ".validate": "newData.isString() && newData.val().length > 10"
       }
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null && ( ($chatId.contains(auth.uid) && $chatId.contains('_')) || $chatId == 'global' || $chatId == 'ai-chatbot' || (!$chatId.contains('_') && $chatId != 'global' && $chatId != 'ai-chatbot') )",
-        ".write": "auth != null && ( ($chatId.contains(auth.uid) && $chatId.contains('_')) || $chatId == 'global' || (!$chatId.contains('_') && $chatId != 'global' && $chatId != 'ai-chatbot') )",
+        ".read": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || (!$chatId.contains('dm_') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
+        // Users can write to DMs they are part of, global chat, AI chatbot, or party chats.
+        ".write": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || (!$chatId.contains('dm_') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
         "$messageId": {
           ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
           "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
