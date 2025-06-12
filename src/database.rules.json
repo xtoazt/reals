@@ -5,7 +5,7 @@
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio'])",
+        ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio']) && newData.child('username').isString() && newData.child('username').val().length >= 3 && newData.child('username').val().length <= 30 && newData.child('username').val().matches(/^[a-zA-Z0-9_]+$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 3 && newData.child('displayName').val().length <= 30 && newData.child('displayName').val().matches(/^[a-zA-Z0-9_]+$/) ",
         "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
         "username": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
         "displayName": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
@@ -32,35 +32,21 @@
     "chats": {
       "$chatId": {
         ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && data.child('members/' + auth.uid).exists()) )",
-        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members/' + auth.uid).exists()) || (!data.exists() && newData.child('members/' + auth.uid).exists()) )) )",
+        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members/' + auth.uid).exists()) || (!data.exists() && newData.parent().child('members').child(auth.uid).exists()) )) )",
         
         "gcName": { ".validate": "$chatId.contains('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
-        "createdAt": { ".validate": "$chatId.contains('gc-') && newData.isNumber() && (newData.val() === now || data.child('createdAt').val() === newData.val())" },
+        "createdAt": { ".validate": "$chatId.contains('gc-') && newData.isNumber() && (newData.val() === now || (data.exists() && data.child('createdAt').val() === newData.val()))" },
         "members": {
           "$uid": {
             ".validate": "$chatId.contains('gc-') && newData.isBoolean() && newData.val() === true"
-          }
+          },
+          "$other": { ".validate": false } 
         },
-        "messages": {
-            "$messageId": {
-              ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now",
-              "senderUid": { ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
-              "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
-              "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
-              "senderAvatar": { ".validate": "newData.isString()" },
-              "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
-              "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
-              "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
-              "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
-              "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
-              "timestamp": { ".validate": "newData.val() === now" },
-              "$other": { ".validate": false }
-            }
-        },
-        "$messageId": {
-            ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
-            "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+        "messages": { 
+          "$messageId": {
+            ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now",
+            "senderUid": { ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
             "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
             "senderAvatar": { ".validate": "newData.isString()" },
@@ -70,12 +56,23 @@
             "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
             "timestamp": { ".validate": "newData.val() === now" },
-            "$other": { ".validate": "!$chatId.contains('gc-') && false" }
+            "$other": { ".validate": false } 
+          },
+          "$other": {".validate": false} 
         },
-        "$other": { // This ensures no other top-level properties are written directly under a $chatId, unless handled above.
-          ".validate": "($chatId.contains('gc-') && (newData.parent().child($chatId).hasChild('gcName') || newData.parent().child($chatId).hasChild('members') || newData.parent().child($chatId).hasChild('messages') || newData.parent().child($chatId).hasChild('createdBy') || newData.parent().child($chatId).hasChild('createdAt'))) || (!$chatId.contains('gc-'))"
-          // For GCs, $other properties are disallowed.
-          // For non-GCs, $other properties (which would be message IDs) are allowed by the !$chatId.contains('gc-') part.
+        "$messageId": { 
+          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
+          "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+          "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+          "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+          "senderAvatar": { ".validate": "newData.isString()" },
+          "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
+          "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+          "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+          "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
+          "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
+          "timestamp": { ".validate": "newData.val() === now" },
+          "$other": { ".validate": false } 
         }
       }
     },
@@ -107,16 +104,16 @@
     },
     "blocked_users": {
       "$blocker_uid": {
-        ".read": "auth != null && auth.uid === $blocker_uid",
+        ".read": "auth != null && auth.uid === $blocker_uid", 
         "$blocked_uid": {
-          ".write": "auth != null && auth.uid === $blocker_uid",
+          ".write": "auth != null && auth.uid === $blocker_uid", 
           ".validate": "newData.isBoolean()"
         }
       }
     },
     "users_blocked_by": {
       "$blocked_uid": {
-        ".read": "auth != null && auth.uid === $blocked_uid",
+        ".read": "auth != null && auth.uid === $blocked_uid", 
         "$blocker_uid": {
           ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
