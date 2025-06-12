@@ -29,21 +29,19 @@
     },
     "chats": {
       "$chatId": {
-        // Corrected read rule
-        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && (data.child('members/' + auth.uid).exists() || newData.parent().child($chatId).child('members/' + auth.uid).exists() )) )",
-        // Corrected write rule
+        // Corrected read rule: Removed newData from .read expression
+        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && data.child('members/' + auth.uid).exists()) )",
+        // Write rule allows checking newData for GC creation context
         ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && (data.child('members/' + auth.uid).exists() || newData.parent().child($chatId).child('members/' + auth.uid).exists() )) )",
         
-        // GC specific data like gcName, createdBy, members
         "gcName": { ".validate": "$chatId.contains('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
-        "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" }, // Allow system to create initial GCs if needed
-        "createdAt": { ".validate": "$chatId.contains('gc-') && newData.isNumber() && (newData.val() === now || data.child('createdAt').val() === newData.val())" }, // Allow timestamp to be set on creation
+        "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
+        "createdAt": { ".validate": "$chatId.contains('gc-') && newData.isNumber() && (newData.val() === now || data.child('createdAt').val() === newData.val())" },
         "members": {
           "$uid": {
             ".validate": "$chatId.contains('gc-') && newData.isBoolean() && newData.val() === true"
           }
         },
-        // Messages are under a 'messages' child node
         "messages": {
             "$messageId": {
               ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now",
@@ -137,5 +135,3 @@
     }
   }
 }
-
-    
