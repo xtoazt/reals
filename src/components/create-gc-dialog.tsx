@@ -63,7 +63,26 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
-        fetchUserProfile(user.uid).then(profile => setCurrentUserProfile(profile));
+        const userRef = ref(database, `users/${user.uid}`);
+        get(userRef).then(snapshot => {
+          if (snapshot.exists()) {
+            setCurrentUserProfile({ uid: user.uid, ...snapshot.val() });
+          } else {
+            // Fallback if profile node doesn't exist yet
+             setCurrentUserProfile({ 
+                uid: user.uid, 
+                username: user.email?.split('@')[0] || "User", 
+                displayName: user.displayName || user.email?.split('@')[0] || "User"
+            });
+          }
+        }).catch(error => {
+            console.error("Error fetching current user profile for GC dialog:", error);
+            setCurrentUserProfile({ 
+                uid: user.uid, 
+                username: user.email?.split('@')[0] || "User", 
+                displayName: user.displayName || user.email?.split('@')[0] || "User"
+            });
+        });
       } else {
         setCurrentUserProfile(null);
       }
@@ -71,30 +90,29 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
-  const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid];
+  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile: UserProfileData = { 
-            uid, 
-            username: userData.username || "unknown_user", 
-            displayName: userData.displayName || "Unknown User", 
-            avatar: userData.avatar, 
-            nameColor: userData.nameColor 
+        const profile: UserProfileData = {
+          uid,
+          username: userData.username || "unknown_user",
+          displayName: userData.displayName || "Unknown User",
+          avatar: userData.avatar,
+          nameColor: userData.nameColor,
         };
-        setUsersCache(prev => ({...prev, [uid]: profile}));
+        setUsersCache(prevCache => ({ ...prevCache, [uid]: profile }));
         return profile;
       }
-      console.warn(`User profile not found for UID: ${uid}`);
+      console.warn(`User profile not found for UID in fetchAndCache: ${uid}`);
       return null;
     } catch (error) {
-      console.error("Error fetching user profile:", error);
+      console.error("Error fetching user profile in fetchAndCache:", error);
       return null;
     }
-  }, [usersCache]);
+  }, []); // setUsersCache is stable from useState, `database` and `get` are stable.
 
   useEffect(() => {
     if (!currentUser || !isOpen) {
@@ -106,36 +124,52 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     }
 
     setIsLoadingFriends(true);
-    const friendsRef = ref(database, `friends/${currentUser.uid}`);
-    const listener = onValue(friendsRef, async (snapshot) => {
+    const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
+
+    const listener = onValue(friendsDbRef, async (snapshot) => {
       const friendsData = snapshot.val();
       if (friendsData) {
-        const loadedFriends: Friend[] = [];
         const friendUIDs = Object.keys(friendsData);
-        for (const friendUid of friendUIDs) {
-          const profile = await fetchUserProfile(friendUid);
-          if (profile) { 
-            loadedFriends.push({
+        
+        const loadedFriendsPromises = friendUIDs.map(async (friendUid) => {
+          let profile = usersCache[friendUid]; // Check current component state cache
+          if (!profile) {
+            // If not in component cache, fetch (it will also update usersCache via setUsersCache)
+            profile = await fetchAndCacheUserProfile(friendUid);
+          }
+          if (profile) {
+            return {
               id: friendUid,
               username: profile.username,
               displayName: profile.displayName,
               avatar: profile.avatar,
               nameColor: profile.nameColor,
-            });
+            };
           }
-        }
-        setFriendsList(loadedFriends);
+          return null;
+        });
+
+        const resolvedFriends = (await Promise.all(loadedFriendsPromises)).filter(
+          (f => f !== null)
+        ) as Friend[];
+        
+        // Check if component is still mounted before setting state
+        // This pattern is implicitly handled by React 18 strict effects, but explicit check can be added if needed
+        setFriendsList(resolvedFriends);
       } else {
         setFriendsList([]);
       }
       setIsLoadingFriends(false);
     }, (error) => {
-        console.error("Error fetching friends for GC dialog:", error);
-        toast({title: "Error", description: "Could not load friends list.", variant: "destructive"});
-        setIsLoadingFriends(false);
+      console.error("Error fetching friends for GC dialog:", error);
+      toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
+      setIsLoadingFriends(false);
     });
-    return () => off(friendsRef, 'value', listener);
-  }, [currentUser, isOpen, fetchUserProfile, toast]);
+
+    return () => {
+      off(friendsDbRef, 'value', listener);
+    };
+  }, [currentUser, isOpen, usersCache, fetchAndCacheUserProfile, toast]);
 
 
   useEffect(() => {
@@ -192,7 +226,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           content: initialMessageContent,
           timestamp: serverTimestamp(),
       };
-      await push(messagesRef, initialMessage); // Use push to generate unique ID for message
+      await push(messagesRef, initialMessage);
 
 
       toast({
@@ -299,4 +333,3 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     </Dialog>
   );
 }
-
