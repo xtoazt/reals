@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 
 interface ChatInterfaceProps {
   chatTitle: string;
-  chatType: 'global' | 'gc' | 'dm' | 'ai'; 
+  chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
 }
 
@@ -32,13 +32,13 @@ interface UserProfileData {
   title?: string;
   isShinyGold?: boolean;
   isShinySilver?: boolean;
-  isAdmin?: boolean; 
+  isAdmin?: boolean;
 }
 
 interface TypingStatus {
     isTyping: boolean;
     timestamp: number;
-    displayName: string; 
+    displayName: string;
 }
 
 const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
@@ -51,7 +51,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isAiResponding, setIsAiResponding] = useState(false);
-  const scrollAreaViewportRef = useRef<HTMLDivElement>(null); 
+  const scrollAreaViewportRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
   const [typingUsers, setTypingUsers] = useState<{[uid: string]: TypingStatus}>({});
@@ -67,13 +67,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
 
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
-    if (uid === 'ai-chatbot-uid' || uid === 'system') { 
-      const specialProfile: UserProfileData = { 
-          uid, 
-          username: uid === 'ai-chatbot-uid' ? 'realtalk_ai' : 'system', 
-          displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System', 
-          avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`, 
-          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a', 
+    if (uid === 'ai-chatbot-uid' || uid === 'system') {
+      const specialProfile: UserProfileData = {
+          uid,
+          username: uid === 'ai-chatbot-uid' ? 'realtalk_ai' : 'system',
+          displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System',
+          avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`,
+          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a',
           isShinyGold: false,
           isShinySilver: false,
           isAdmin: false,
@@ -89,7 +89,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const profile: UserProfileData = {
           uid,
           username: userData.username || "unknown_user",
-          displayName: userData.displayName || "Unknown User",
+          displayName: userData.username, // Use username as displayName
           avatar: userData.avatar,
           nameColor: userData.nameColor,
           title: userData.title,
@@ -119,7 +119,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: user.email?.split('@')[0] || "user",
-                    displayName: user.displayName || "User",
+                    displayName: user.email?.split('@')[0] || "User", // Use username as displayName
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
                     isShinySilver: false,
@@ -129,7 +129,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         });
       } else {
         setCurrentUserProfile(null);
-        if (chatType !== 'ai') { 
+        if (chatType !== 'ai') {
             setMessages([]);
         }
         if (chatType !== 'ai') setIsLoadingMessages(false);
@@ -148,7 +148,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const activeTypers: {[uid: string]: TypingStatus} = {};
         if (data) {
             Object.entries(data).forEach(([uid, status]) => {
-                const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string}; 
+                const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string};
                 if (uid !== currentUser?.uid && typingInfo.isTyping && (now - typingInfo.timestamp < TYPING_TIMEOUT_MS)) {
                     const userToDisplay = usersCache[uid] || { displayName: typingInfo.displayName || "Someone" };
                     activeTypers[uid] = {...typingInfo, displayName: userToDisplay.displayName };
@@ -189,27 +189,38 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
 
-    if (!currentUser || !chatId) { 
+    if (!currentUser || !chatId) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
     }
 
     setIsLoadingMessages(true);
-    const messagesPath = `chats/${chatId}/messages`; 
+    let messagesPath: string;
+    if (chatType === 'gc') {
+      messagesPath = `chats/${chatId}/messages`;
+    } else { // 'global' or 'dm'
+      messagesPath = `chats/${chatId}`;
+    }
+
     const messagesRefQuery = query(ref(database, messagesPath), orderByChild('timestamp'), limitToLast(50));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
       const messageDataArray: { key: string, data: any }[] = [];
       snapshot.forEach((childSnapshot) => {
-        messageDataArray.push({ key: childSnapshot.key!, data: childSnapshot.val() });
+        // For DMs and Global, direct children are messages. For GCs, they are also messages.
+        // We need to ensure we only process actual message objects, not metadata like gcName if path is `chats/${chatId}` for non-GCs.
+        const msgData = childSnapshot.val();
+        if (msgData && typeof msgData === 'object' && msgData.senderUid && msgData.content && msgData.timestamp) {
+            messageDataArray.push({ key: childSnapshot.key!, data: msgData });
+        }
       });
 
       const loadedMessagesPromises = messageDataArray.map(async (msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-        const profile = await fetchUserProfile(senderUid); 
-        
+        const profile = await fetchUserProfile(senderUid);
+
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
 
@@ -229,7 +240,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderIsShinySilver: profile?.isShinySilver || msgData.senderIsShinySilver || false,
         };
       });
-      
+
       const resolvedMessages = await Promise.all(loadedMessagesPromises);
       resolvedMessages.sort((a,b) => (a.originalTimestamp || 0) - (b.originalTimestamp || 0));
       setMessages(resolvedMessages);
@@ -274,7 +285,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
     if (currentUserTypingRef) {
-        remove(currentUserTypingRef); 
+        remove(currentUserTypingRef);
     }
 
     if (chatType === 'ai') {
@@ -306,7 +317,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             sender: aiProfile?.displayName || 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
-            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI', 
+            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
             content: aiResult.response,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -346,17 +357,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         return;
     }
 
-    if (!chatId) { 
+    if (!chatId) {
         toast({ title: "Error", description: "Chat ID is missing.", variant: "destructive" });
         return;
     }
-    const messagesDbPath = `chats/${chatId}/messages`; 
-    const messagesDbRef = ref(database, messagesDbPath);
+
+    let messagesDbRefPath: string;
+    if (chatType === 'gc') {
+      messagesDbRefPath = `chats/${chatId}/messages`;
+    } else { // 'global' or 'dm'
+      messagesDbRefPath = `chats/${chatId}`;
+    }
+    const messagesDbRef = ref(database, messagesDbRefPath);
 
 
     const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
-      senderName: currentUserProfile.displayName,
+      senderName: currentUserProfile.displayName, // Use username as displayName
       senderUsername: currentUserProfile.username,
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
       content,
@@ -437,7 +454,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {chatType === 'gc' && ( 
+            {chatType === 'gc' && (
               <>
                 <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
@@ -460,9 +477,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden p-0 relative"> 
+      <CardContent className="flex-1 overflow-hidden p-0 relative">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
-          <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> 
+          <div className="p-2 md:p-4 space-y-0.5 md:space-y-1">
             {isLoadingMessages ? (
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -476,12 +493,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
               messages.map((msg, index) => {
                 const previousMessage = index > 0 ? messages[index - 1] : undefined;
                 const isSameSenderAsPrevious = previousMessage && previousMessage.senderUid === msg.senderUid;
-                
+
                 let isWithinContinuationThreshold = false;
                 if (isSameSenderAsPrevious && msg.originalTimestamp && previousMessage?.originalTimestamp) {
                     isWithinContinuationThreshold = (msg.originalTimestamp - previousMessage.originalTimestamp) < MESSAGE_GROUP_THRESHOLD_MS;
                 }
-              
+
                 const showAvatarAndSender = !isSameSenderAsPrevious || !isWithinContinuationThreshold;
                 const isContinuation = !showAvatarAndSender;
 
@@ -509,18 +526,18 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         {showScrollToBottomButton && (
             <Button
                 variant="outline"
-                size="default" 
+                size="default"
                 className={cn(
                     "absolute bottom-4 right-4 z-10 rounded-full shadow-lg h-10 px-3 md:px-4 text-sm",
                     "bg-background/80 backdrop-blur-sm hover:bg-background"
                 )}
                 onClick={() => scrollToBottom('smooth')}
             >
-                <ArrowDown 
+                <ArrowDown
                     className={cn(
                         "h-4 w-4 md:h-5 md:w-5",
                         hasNewMessagesWhileScrolledUp ? "mr-1 md:mr-1.5 animate-bounce-sm" : "mr-0 md:mr-1"
-                    )} 
+                    )}
                 />
                 <span className="hidden md:inline">{hasNewMessagesWhileScrolledUp ? "New Messages" : "To Bottom"}</span>
                 {hasNewMessagesWhileScrolledUp && <span className="md:hidden">New!</span>}
@@ -533,11 +550,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         </div>
       )}
       <CardFooter className="p-0">
-        <ChatInput 
-            onSendMessage={handleSendMessage} 
+        <ChatInput
+            onSendMessage={handleSendMessage}
             disabled={(chatType === 'ai' && isAiResponding) || !currentUser}
             chatId={chatId}
-            currentUserProfile={currentUserProfile} 
+            currentUserProfile={currentUserProfile}
         />
       </CardFooter>
     </Card>

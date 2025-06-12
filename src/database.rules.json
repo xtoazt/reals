@@ -31,9 +31,13 @@
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && data.child('members').child(auth.uid).exists()) )",
+        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
         ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
         
+        // Index for DM, Global, AI chat messages (direct children of $chatId)
+        // This is only effective if $chatId is NOT a GC.
+        ".indexOn": ["timestamp"],
+
         "gcName": { ".validate": "$chatId.contains('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
         "createdAt": { ".validate": "$chatId.contains('gc-') && newData.isNumber() && (newData.val() === now || (data.exists() && data.child('createdAt').val() === newData.val()))" },
@@ -42,7 +46,8 @@
             ".validate": "$chatId.contains('gc-') && newData.isBoolean() && newData.val() === true"
           }
         },
-        "messages": { 
+        "messages": { // Node specific to GCs
+          ".indexOn": ["timestamp"], // Index for GC messages
           "$messageId": {
             ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now",
             "senderUid": { ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
@@ -55,10 +60,11 @@
             "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
             "timestamp": { ".validate": "newData.val() === now" },
-            "$other": { ".validate": false } 
+            "$other": { ".validate": false }
           }
         },
-        "$messageId": { 
+        // For DM, Global, AI messages (direct children of $chatId)
+        "$messageId": {
           ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
           "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
@@ -70,7 +76,7 @@
           "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
           "timestamp": { ".validate": "newData.val() === now" },
-          "$other": { ".validate": false } 
+          "$other": { ".validate": false }
         }
       }
     },
@@ -102,16 +108,16 @@
     },
     "blocked_users": {
       "$blocker_uid": {
-        ".read": "auth != null && auth.uid === $blocker_uid", 
+        ".read": "auth != null && auth.uid === $blocker_uid",
         "$blocked_uid": {
-          ".write": "auth != null && auth.uid === $blocker_uid", 
+          ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
         }
       }
     },
     "users_blocked_by": {
       "$blocked_uid": {
-        ".read": "auth != null && auth.uid === $blocked_uid", 
+        ".read": "auth != null && auth.uid === $blocked_uid",
         "$blocker_uid": {
           ".write": "auth != null && auth.uid === $blocker_uid",
           ".validate": "newData.isBoolean()"
