@@ -3,7 +3,7 @@
 
 import ParticlesBackground from '@/components/particles-background';
 import { TopNavBar } from '@/components/top-nav-bar';
-import { auth, setupPresence, goOnline, goOffline } from '@/lib/firebase'; // Import setupPresence
+import { auth, database, setupPresence, goOnline, goOffline } from '@/lib/firebase'; // Import database instance
 import { onAuthStateChanged } from 'firebase/auth';
 import React, { useEffect } from 'react'; // Import React and useEffect
 
@@ -16,7 +16,7 @@ export default function DashboardLayout({
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setupPresence(user.uid);
-        goOnline(auth.app.options.databaseURL ? getDatabase(auth.app) : getDatabase()); // Ensure user is marked online
+        goOnline(database); // Use the imported database instance
       }
     });
 
@@ -24,11 +24,11 @@ export default function DashboardLayout({
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         if (auth.currentUser) {
-            // goOffline(auth.app.options.databaseURL ? getDatabase(auth.app) : getDatabase()); // Optional: more aggressive offline marking
+            // goOffline(database); // Optional: more aggressive offline marking
         }
       } else {
         if (auth.currentUser) {
-            goOnline(auth.app.options.databaseURL ? getDatabase(auth.app) : getDatabase());
+            goOnline(database); // Use the imported database instance
             setupPresence(auth.currentUser.uid); // Re-assert presence
         }
       }
@@ -38,7 +38,7 @@ export default function DashboardLayout({
     
     // Ensure user is marked online when the app loads/layout mounts, if logged in
     if (auth.currentUser) {
-        goOnline(auth.app.options.databaseURL ? getDatabase(auth.app) : getDatabase());
+        goOnline(database); // Use the imported database instance
         setupPresence(auth.currentUser.uid);
     }
 
