@@ -8,21 +8,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera } from "lucide-react";
+import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2 } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, update, get, off } from 'firebase/database';
+import { onAuthStateChanged, type User as FirebaseUser, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { ref, onValue, update, get, off, remove as removeDb } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 
 interface UserProfile {
   uid: string;
-  username: string;
-  displayName: string;
+  username: string; // This will also serve as display name
+  displayName: string; // Kept for compatibility, will mirror username
   avatar: string; 
   banner?: string; 
   bio: string;
@@ -49,6 +60,8 @@ export default function ProfilePage() {
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -63,8 +76,8 @@ export default function ProfilePage() {
             setUserProfile({
               uid: user.uid,
               username: data.username || (user.email?.split('@')[0] || "User"),
-              displayName: data.displayName || user.displayName || "User",
-              avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.displayName || user.displayName || "U").substring(0,2).toUpperCase()}`,
+              displayName: data.displayName || data.username || user.displayName || "User", // Ensure displayName reflects username
+              avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.username || "U").substring(0,2).toUpperCase()}`,
               banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
               bio: data.bio || "No bio yet.",
               title: data.title,
@@ -78,8 +91,8 @@ export default function ProfilePage() {
             const basicProfile: UserProfile = {
               uid: user.uid,
               username: fallbackUsername,
-              displayName: user.displayName || fallbackUsername,
-              avatar: `https://placehold.co/128x128.png?text=${(user.displayName || "U").substring(0,2).toUpperCase()}`,
+              displayName: fallbackUsername, // Ensure displayName reflects username
+              avatar: `https://placehold.co/128x128.png?text=${(fallbackUsername).substring(0,2).toUpperCase()}`,
               banner: "https://placehold.co/1200x300.png?text=Banner",
               bio: "New user! Ready to chat.",
               friendsCount: 0,
@@ -198,6 +211,42 @@ export default function ProfilePage() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!currentUser || !userProfile) {
+      toast({ title: "Error", description: "User not found for deletion.", variant: "destructive" });
+      return;
+    }
+    setIsDeletingAccount(true);
+    try {
+      // 1. Delete user data from Realtime Database
+      const userNodeRef = ref(database, `users/${currentUser.uid}`);
+      await removeDb(userNodeRef);
+      const usernameNodeRef = ref(database, `usernames/${userProfile.username.toLowerCase()}`);
+      await removeDb(usernameNodeRef);
+      // Add deletion for other user-related data (friends, requests, etc.) here if necessary
+
+      // 2. Delete user from Firebase Authentication
+      await deleteUser(currentUser);
+
+      toast({ title: "Account Deleted", description: "Your account and associated data have been successfully deleted." });
+      router.push('/auth'); 
+    } catch (error: any) {
+      console.error("Error deleting account:", error);
+      if (error.code === 'auth/requires-recent-login') {
+        toast({
+          title: "Re-authentication Required",
+          description: "For security, please log out and log back in before deleting your account.",
+          variant: "destructive",
+          duration: 7000,
+        });
+      } else {
+        toast({ title: "Deletion Failed", description: `Could not delete account: ${error.message}`, variant: "destructive" });
+      }
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -216,8 +265,8 @@ export default function ProfilePage() {
     );
   }
   
-  const userDisplayNameStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
-  const userTitleStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userDisplayNameFinalStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userTitleFinalStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
 
 
   return (
@@ -252,8 +301,8 @@ export default function ProfilePage() {
           <div className="flex flex-col md:flex-row items-center md:items-end -mt-16 md:-mt-20 space-y-4 md:space-y-0 md:space-x-6">
             <div className="relative">
               <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-md">
-                <AvatarImage src={userProfile.avatar} alt={userProfile.displayName} data-ai-hint="profile picture" key={userProfile.avatar}/>
-                <AvatarFallback className="text-4xl">{userProfile.displayName?.split(' ').map(n => n[0]).join('') || userProfile.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                <AvatarImage src={userProfile.avatar} alt={userProfile.username} data-ai-hint="profile picture" key={userProfile.avatar}/>
+                <AvatarFallback className="text-4xl">{userProfile.username?.split(' ').map(n => n[0]).join('') || userProfile.username?.charAt(0) || 'U'}</AvatarFallback>
               </Avatar>
               <Button 
                 variant="outline" 
@@ -267,12 +316,11 @@ export default function ProfilePage() {
               </Button>
             </div>
             <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> 
-              <h1 className={cn("text-3xl font-bold font-headline", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameStyle}>
-                {userProfile.displayName}
+              <h1 className={cn("text-3xl font-bold font-headline", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameFinalStyle}>
+                {userProfile.username} {/* Display username as the main name */}
               </h1>
-              {userProfile.username && <p className="text-sm text-muted-foreground">@{userProfile.username}</p>}
               {userProfile.title && (
-                <p className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>
+                <p className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>
                   {userProfile.title}
                 </p>
               )}
@@ -310,10 +358,6 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Profile Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label htmlFor="displayNameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Display Name</Label>
-                <Input id="displayNameInput" value={userProfile.displayName} disabled className={cn(userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userDisplayNameStyle}/>
-              </div>
                <div>
                 <Label htmlFor="usernameInput" className="flex items-center"><UserIcon size={14} className="mr-1" />Username</Label>
                 <Input id="usernameInput" value={userProfile.username} disabled />
@@ -321,8 +365,8 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>Title:</span></Label>
-                  <Input id="titleInput" value={userProfile.title} disabled className={cn("italic", userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleStyle}/>
+                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>Title:</span></Label>
+                  <Input id="titleInput" value={userProfile.title} disabled className={cn("italic", userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleFinalStyle}/>
                 </div>
               )}
               {userProfile.nameColor && !userProfile.isShinyGold && (
@@ -336,8 +380,51 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
+
+           <Separator className="my-6" />
+            <Card className="border-destructive">
+                <CardHeader>
+                    <CardTitle className="text-destructive flex items-center"><Trash2 className="mr-2"/>Danger Zone</CardTitle>
+                    <CardDescription>
+                        Be careful with actions in this zone. Account deletion is permanent and cannot be undone.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isDeletingAccount}>
+                                {isDeletingAccount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                                Delete My Account
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete your account,
+                                remove your data from our servers, and you will lose access to RealTalk.
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isDeletingAccount}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={handleDeleteAccount}
+                                disabled={isDeletingAccount}
+                                className={buttonVariants({variant: "destructive"})}
+                            >
+                                {isDeletingAccount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Yes, Delete My Account
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </CardContent>
+            </Card>
+
+
         </CardContent>
       </Card>
     </div>
   );
 }
+

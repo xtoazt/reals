@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Palette, Sparkles, User as UserIcon, KeyRound, CheckSquare } from 'lucide-react';
+import { Eye, EyeOff, Palette, Sparkles, User as UserIcon, KeyRound } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -34,8 +34,7 @@ const loginSchema = z.object({
 });
 
 const signupSchema = z.object({
-  username: z.string().min(3, { message: 'Login username must be at least 3 characters.' }).max(30, { message: 'Login username can be at most 30 characters.'}).regex(/^[a-zA-Z0-9_]+$/, { message: 'Login username can only contain letters, numbers, and underscores.' }),
-  displayName: z.string().min(1, { message: 'Display name is required.'}).max(50, { message: 'Display name can be at most 50 characters.'}).regex(/^[a-zA-Z0-9_ .]+$/, { message: 'Display name can contain letters, numbers, underscores, spaces, and periods.'}),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters.' }).max(30, { message: 'Username can be at most 30 characters.'}).regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
   specialCode: z.string().optional(),
   nameColor: z.string().optional(),
@@ -65,7 +64,6 @@ export function AuthForm() {
     resolver: zodResolver(signupSchema),
     defaultValues: {
       username: '',
-      displayName: '',
       password: '',
       specialCode: '',
       nameColor: '#FFA500', 
@@ -112,7 +110,6 @@ export function AuthForm() {
     } catch (error: any) {
       console.error("Login error:", error);
       let errorMessage = 'An unexpected error occurred during login.';
-      // Check if Email/Password sign-in provider is enabled in Firebase console > Authentication > Sign-in method
       if (error.code === 'auth/invalid-credential') {
         errorMessage = 'The username or password you entered is incorrect. Please try again.';
       } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
@@ -157,14 +154,14 @@ export function AuthForm() {
 
       if (user) {
         await updateProfile(user, {
-            displayName: values.displayName, 
+            displayName: values.username, // Use username as displayName for Auth system
         });
 
         const userProfileRef = ref(database, `users/${user.uid}`);
         const profileData: {
             uid: string;
             username: string; 
-            displayName: string; 
+            displayName: string; // This will also be the username
             email: string; 
             nameColor?: string;
             title?: string;
@@ -176,10 +173,10 @@ export function AuthForm() {
         } = {
             uid: user.uid,
             username: lowerCaseLoginUsername, 
-            displayName: values.displayName, 
+            displayName: values.username, // Store username as displayName in DB
             email: emailForAuth, 
-            avatar: `https://placehold.co/128x128.png?text=${values.displayName.substring(0,2).toUpperCase()}`,
-            banner: `https://placehold.co/1200x300.png?text=Hello+${values.displayName}`,
+            avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
+            banner: `https://placehold.co/1200x300.png?text=Hello+${values.username}`,
             bio: "New user! Ready to chat.",
             friendsCount: 0,
         };
@@ -196,7 +193,7 @@ export function AuthForm() {
 
         toast({
           title: 'Account Created!',
-          description: `Welcome, ${values.displayName}!`, 
+          description: `Welcome, ${values.username}!`, 
         });
         router.push('/dashboard?showThemePicker=true'); 
       } else {
@@ -205,7 +202,6 @@ export function AuthForm() {
     } catch (error: any) {
       console.error("Signup error:", error);
       let errorMessage = 'An unexpected error occurred during signup.';
-      // Check if Email/Password sign-in provider is enabled in Firebase console > Authentication > Sign-in method
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'This login username is already taken (the email address derived from it is in use). Please choose another.';
       } else if (error.code === 'auth/weak-password') {
@@ -250,9 +246,9 @@ export function AuthForm() {
                   name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Login Username</FormLabel>
+                      <FormLabel className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your login username" {...field} disabled={isLoading} />
+                        <Input placeholder="Enter your username" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -297,28 +293,15 @@ export function AuthForm() {
           </TabsContent>
           <TabsContent value="signup" className="pt-6">
              <Form {...signupForm}>
-              <form onSubmit={signupForm.handleSubmit(onSignupSubmit)} className="space-y-4"> {/* Reduced space-y */}
+              <form onSubmit={signupForm.handleSubmit(onSignupSubmit)} className="space-y-4">
                 <FormField
                   control={signupForm.control}
                   name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel  className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Login Username</FormLabel>
+                      <FormLabel  className="flex items-center"><UserIcon size={16} className="mr-2 opacity-70"/>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Choose a login username (no spaces/periods)" {...field} disabled={isLoading} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={signupForm.control}
-                  name="displayName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center"><CheckSquare size={16} className="mr-2 opacity-70"/>Display Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Your public name (e.g. Pro User 1.0)" {...field} disabled={isLoading} />
+                        <Input placeholder="Choose your username (no spaces/periods)" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
