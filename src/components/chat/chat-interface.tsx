@@ -7,13 +7,14 @@ import { ChatInput } from './chat-input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users } from 'lucide-react';
+import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
+import { cn } from '@/lib/utils';
 
 
 interface ChatInterfaceProps {
@@ -40,6 +41,7 @@ interface TypingStatus {
 
 const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
+const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,6 +53,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const { toast } = useToast();
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
   const [typingUsers, setTypingUsers] = useState<{[uid: string]: TypingStatus}>({});
+
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
+  const [hasNewMessagesWhileScrolledUp, setHasNewMessagesWhileScrolledUp] = useState(false);
+  const prevMessagesLengthRef = useRef(messages.length);
+
 
   const typingStatusRef = useMemo(() => chatId ? ref(database, `typing_status/${chatId}`) : null, [chatId]);
   const currentUserTypingRef = useMemo(() => (chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [chatId, currentUser]);
@@ -132,9 +139,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const activeTypers: {[uid: string]: TypingStatus} = {};
         if (data) {
             Object.entries(data).forEach(([uid, status]) => {
-                const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string}; // displayName might not be stored in typing_status
+                const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string}; 
                 if (uid !== currentUser?.uid && typingInfo.isTyping && (now - typingInfo.timestamp < TYPING_TIMEOUT_MS)) {
-                    // Fetch displayName if not already in typingInfo, or use cached
                     const userToDisplay = usersCache[uid] || { displayName: typingInfo.displayName || "Someone" };
                     activeTypers[uid] = {...typingInfo, displayName: userToDisplay.displayName };
                 }
@@ -173,14 +179,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
 
-    if (!currentUser || !chatId) { // Added !chatId check
+    if (!currentUser || !chatId) { 
         setIsLoadingMessages(false);
         setMessages([]);
         return;
     }
 
     setIsLoadingMessages(true);
-    const messagesPath = `chats/${chatId}/messages`; // Assuming messages are under a 'messages' child
+    const messagesPath = `chats/${chatId}/messages`; 
     const messagesRefQuery = query(ref(database, messagesPath), orderByChild('timestamp'), limitToLast(50));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
@@ -192,7 +198,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       const loadedMessagesPromises = messageDataArray.map(async (msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-        const profile = await fetchUserProfile(senderUid); // Will fetch 'system' or 'ai-chatbot-uid' if applicable
+        const profile = await fetchUserProfile(senderUid); 
         
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
@@ -226,16 +232,29 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     return () => {
       off(messagesRefQuery, 'value', listener);
     };
-  }, [currentUser, chatType, chatId, toast, fetchUserProfile]); // Added chatId to dependencies
+  }, [currentUser, chatType, chatId, toast, fetchUserProfile]);
 
+
+  // Effect for auto-scrolling and detecting new messages while scrolled up
   useEffect(() => {
     const viewport = scrollAreaViewportRef.current;
     if (viewport) {
-      setTimeout(() => {
-        viewport.scrollTop = viewport.scrollHeight;
-      }, 0); // Delay slightly to allow DOM updates
+      const newMessagesArrived = messages.length > prevMessagesLengthRef.current;
+      const lastMessage = messages[messages.length - 1];
+      const isLastMessageNotOwnOrSystem = lastMessage && currentUser?.uid !== lastMessage.senderUid && lastMessage.senderUid !== 'system';
+
+      if (showScrollToBottomButton && newMessagesArrived && isLastMessageNotOwnOrSystem) {
+        setHasNewMessagesWhileScrolledUp(true);
+      }
+
+      if (!showScrollToBottomButton) { // Auto-scroll if not manually scrolled up
+        setTimeout(() => {
+          viewport.scrollTop = viewport.scrollHeight;
+        }, 0);
+      }
     }
-  }, [messages, typingUsers]); // Scroll on new messages or typing indicators change
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, showScrollToBottomButton, currentUser?.uid]);
 
 
   const handleSendMessage = async (content: string) => {
@@ -244,7 +263,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       return;
     }
     if (currentUserTypingRef) {
-        remove(currentUserTypingRef); // Stop typing indicator on send
+        remove(currentUserTypingRef); 
     }
 
     if (chatType === 'ai') {
@@ -313,11 +332,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         return;
     }
 
-    if (!chatId) { // Ensure chatId is present for non-AI chats
+    if (!chatId) { 
         toast({ title: "Error", description: "Chat ID is missing.", variant: "destructive" });
         return;
     }
-    const messagesDbPath = `chats/${chatId}/messages`; // Messages are under a child node
+    const messagesDbPath = `chats/${chatId}/messages`; 
     const messagesDbRef = ref(database, messagesDbPath);
 
 
@@ -360,6 +379,37 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     return `${typingUsersArray.slice(0, 2).join(', ')}, and others are typing...`;
   }, [typingUsersArray]);
 
+
+  const handleViewportScroll = useCallback(() => {
+    const viewport = scrollAreaViewportRef.current;
+    if (viewport) {
+      const atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 1;
+      if (atBottom) {
+        setShowScrollToBottomButton(false);
+        setHasNewMessagesWhileScrolledUp(false);
+      } else {
+        const userScrolledSignificantlyUp = viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - SCROLL_TO_BOTTOM_THRESHOLD;
+        if (userScrolledSignificantlyUp) {
+          setShowScrollToBottomButton(true);
+        } else {
+          setShowScrollToBottomButton(false);
+          // If button is hidden, new message flag should also be false (user is close enough to bottom)
+          if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
+        }
+      }
+    }
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const viewport = scrollAreaViewportRef.current;
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+      setShowScrollToBottomButton(false);
+      setHasNewMessagesWhileScrolledUp(false);
+    }
+  }, []);
+
+
   return (
     <Card className="flex flex-col h-full w-full shadow-lg rounded-lg overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between p-3 md:p-4 border-b">
@@ -372,7 +422,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {chatType === 'gc' && ( // Changed from 'party' to 'gc'
+            {chatType === 'gc' && ( 
               <>
                 <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
@@ -395,8 +445,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden p-0">
-        <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef}>
+      <CardContent className="flex-1 overflow-hidden p-0 relative"> {/* Added relative positioning */}
+        <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> 
             {isLoadingMessages ? (
               <div className="flex justify-center items-center h-full p-10">
@@ -441,6 +491,26 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             )}
           </div>
         </ScrollArea>
+        {showScrollToBottomButton && (
+            <Button
+                variant="outline"
+                size="default" 
+                className={cn(
+                    "absolute bottom-4 right-4 z-10 rounded-full shadow-lg h-10 px-3 md:px-4 text-sm",
+                    "bg-background/80 backdrop-blur-sm hover:bg-background"
+                )}
+                onClick={() => scrollToBottom('smooth')}
+            >
+                <ArrowDown 
+                    className={cn(
+                        "h-4 w-4 md:h-5 md:w-5",
+                        hasNewMessagesWhileScrolledUp ? "mr-1 md:mr-1.5 animate-bounce-sm" : "mr-0 md:mr-1"
+                    )} 
+                />
+                <span className="hidden md:inline">{hasNewMessagesWhileScrolledUp ? "New Messages" : "To Bottom"}</span>
+                {hasNewMessagesWhileScrolledUp && <span className="md:hidden">New!</span>}
+            </Button>
+        )}
       </CardContent>
       {typingDisplayMessage && (
         <div className="px-4 pb-1 pt-0 text-xs text-muted-foreground h-5">

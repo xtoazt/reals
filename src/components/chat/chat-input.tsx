@@ -19,11 +19,13 @@ interface ChatInputProps {
 const emojis = ['😀', '😂', '😍', '🤔', '😢', '🥳', '👍', '🙏'];
 const TYPING_DEBOUNCE_MS = 1000; // Only update typing status every 1s
 const TYPING_STOP_DELAY_MS = 3000; // Consider user stopped typing after 3s of inactivity
+const SEND_ANIMATION_DURATION_MS = 400;
 
 export function ChatInput({ onSendMessage, disabled = false, chatId, currentUserProfile }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingUpdateRef = useRef<number>(0);
+  const [isAnimatingSend, setIsAnimatingSend] = useState(false);
 
   const typingStatusRef = currentUserProfile && chatId ? ref(database, `typing_status/${chatId}/${currentUserProfile.uid}`) : null;
 
@@ -80,12 +82,19 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
 
   const handleSend = () => {
     if (message.trim() && !disabled) {
+      if (isAnimatingSend) return; // Prevent re-triggering animation
+
       onSendMessage(message);
       setMessage('');
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
       updateTypingStatus(false); // Clear typing status on send
+
+      setIsAnimatingSend(true);
+      setTimeout(() => {
+        setIsAnimatingSend(false);
+      }, SEND_ANIMATION_DURATION_MS);
     }
   };
 
@@ -139,8 +148,19 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
             <ImageIcon size={18} />
              <span className="sr-only">Upload Image</span>
           </Button>
-          <Button size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={handleSend} disabled={disabled || !message.trim() || !currentUserProfile}>
-            {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal size={18} />}
+          <Button 
+            size="icon" 
+            className="h-8 w-8 md:h-9 md:w-9" 
+            onClick={handleSend} 
+            disabled={disabled || !message.trim() || !currentUserProfile || isAnimatingSend}
+          >
+            {isAnimatingSend ? (
+              <SendHorizonal size={18} className="animate-send-effect" />
+            ) : disabled ? ( // This 'disabled' is for AI responding or not logged in
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <SendHorizonal size={18} />
+            )}
             <span className="sr-only">Send Message</span>
           </Button>
         </div>

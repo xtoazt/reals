@@ -238,6 +238,35 @@
     transition-duration: 200ms;
     transition-timing-function: ease-in-out;
   }
+
+  /* Send message animation */
+  @keyframes send-fly-up {
+    0% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(-20px) scale(0.8);
+      opacity: 0;
+    }
+  }
+  .animate-send-effect {
+    animation: send-fly-up 0.4s ease-out forwards;
+  }
+
+  /* Bounce animation for "New Messages" button icon */
+  @keyframes bounce-sm {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-4px);
+    }
+  }
+  .animate-bounce-sm { /* Custom bounce for smaller elements if Tailwind's default is too much */
+    animation: bounce-sm 1s infinite;
+  }
+
 }
 
 @layer base {
