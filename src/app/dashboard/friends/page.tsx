@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff, Circle } from "lucide-react"; // Added Circle
+import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff, Circle } from "lucide-react"; 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
@@ -22,6 +22,7 @@ interface FriendRequest {
   senderAvatar?: string;
   senderNameColor?: string;
   senderIsShinyGold?: boolean;
+  senderIsShinySilver?: boolean;
   timestamp: number;
 }
 
@@ -32,6 +33,7 @@ interface Friend {
   avatar?: string;
   nameColor?: string;
   isShinyGold?: boolean;
+  isShinySilver?: boolean;
   isOnline?: boolean; 
   lastChanged?: number;
 }
@@ -43,6 +45,8 @@ interface UserProfileData {
     avatar?: string;
     nameColor?: string;
     isShinyGold?: boolean;
+    isShinySilver?: boolean;
+    isAdmin?: boolean;
     friendsCount?: number;
 }
 
@@ -80,7 +84,9 @@ export default function FriendsPage() {
         const profile = { 
             uid, 
             ...userData, 
-            isShinyGold: userData.isShinyGold || false 
+            isShinyGold: userData.isShinyGold || false,
+            isShinySilver: userData.isShinySilver || false,
+            isAdmin: userData.isAdmin || false,
         };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
@@ -105,18 +111,16 @@ export default function FriendsPage() {
         setFriends([]);
         setIsLoadingRequests(false);
         setIsLoadingFriends(false);
-        // Clean up all presence listeners when user logs out
         Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
         setPresenceListeners({});
       }
     });
     return () => {
       unsubscribeAuth();
-      // Clean up all presence listeners on component unmount
       Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
       setPresenceListeners({});
     };
-  }, [fetchUserProfile, presenceListeners]); // Added presenceListeners to dependency array
+  }, [fetchUserProfile, presenceListeners]); 
 
   useEffect(() => {
     if (!currentUser) return;
@@ -136,6 +140,7 @@ export default function FriendsPage() {
             senderAvatar: senderProfile?.avatar,
             senderNameColor: senderProfile?.nameColor,
             senderIsShinyGold: senderProfile?.isShinyGold || false,
+            senderIsShinySilver: senderProfile?.isShinySilver || false,
             timestamp: request.timestamp,
           });
         }
@@ -161,14 +166,13 @@ export default function FriendsPage() {
 
     const friendsListener = onValue(friendsDbRef, async (snapshot) => {
       const friendsData = snapshot.val();
-      // Clean up old presence listeners not relevant anymore
       Object.keys(presenceListeners).forEach(uid => {
         if (!friendsData || !friendsData[uid]) {
-          presenceListeners[uid](); // Unsubscribe
+          presenceListeners[uid](); 
           delete presenceListeners[uid];
         }
       });
-      setPresenceListeners(prev => ({...prev})); // Update state
+      setPresenceListeners(prev => ({...prev})); 
 
       if (friendsData) {
         const friendUIDs = Object.keys(friendsData);
@@ -182,7 +186,8 @@ export default function FriendsPage() {
               avatar: profile.avatar,
               nameColor: profile.nameColor,
               isShinyGold: profile.isShinyGold || false,
-              isOnline: false, // Default to offline initially
+              isShinySilver: profile.isShinySilver || false,
+              isOnline: false, 
             };
           }
           return null;
@@ -191,7 +196,6 @@ export default function FriendsPage() {
         let resolvedFriends = (await Promise.all(loadedFriendsPromises)).filter(f => f !== null) as Friend[];
         setFriends(resolvedFriends);
 
-        // Set up new presence listeners
         resolvedFriends.forEach(friend => {
           if (!presenceListeners[friend.id] && !newPresenceListeners[friend.id]) {
             const presenceRef = ref(database, `/presence/${friend.id}`);
@@ -220,9 +224,9 @@ export default function FriendsPage() {
 
     return () => {
       off(friendsDbRef, 'value', friendsListener);
-      Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe()); // Clean up listeners from this effect run
+      Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe()); 
     };
-  }, [currentUser, fetchUserProfile, toast]); // Removed presenceListeners from here, managed internally
+  }, [currentUser, fetchUserProfile, toast]);
 
 
   const generateDmChatId = (uid1: string, uid2: string): string => {
@@ -467,7 +471,20 @@ export default function FriendsPage() {
               ) : friends.length === 0 ? (
                 <p className="col-span-full text-muted-foreground text-center py-4">You haven't added any friends yet.</p>
               ) : (
-                friends.map(friend => (
+                friends.map(friend => {
+                  let nameClass = "";
+                  let nameStyle = {};
+                  if (friend.isShinyGold) {
+                    nameClass = 'text-shiny-gold';
+                  } else if (friend.isShinySilver) {
+                    nameClass = 'text-shiny-silver';
+                  } else if (friend.nameColor) {
+                    nameStyle = { color: friend.nameColor };
+                  } else {
+                    nameStyle = { color: 'hsl(var(--foreground))' };
+                  }
+
+                  return (
                   <Card key={friend.id} className="p-4 flex flex-col space-y-3 shadow-sm transition-all duration-150 ease-in-out hover:shadow-lg">
                     <div className="flex items-center space-x-4">
                         <Avatar className="h-12 w-12 cursor-pointer relative" onClick={() => handleViewProfile(friend.username)}>
@@ -480,8 +497,8 @@ export default function FriendsPage() {
                         </Avatar>
                         <div className="flex-1">
                         <p 
-                            className={cn("font-semibold cursor-pointer hover:underline", friend.isShinyGold ? 'text-shiny-gold' : '')} 
-                            style={friend.isShinyGold ? {} : { color: friend.nameColor || 'hsl(var(--foreground))' }} 
+                            className={cn("font-semibold cursor-pointer hover:underline", nameClass)} 
+                            style={nameStyle} 
                             onClick={() => handleViewProfile(friend.username)}
                         >
                             {friend.displayName}
@@ -504,7 +521,7 @@ export default function FriendsPage() {
                         <UserX className="mr-1 h-4 w-4" /> Block & Remove
                     </Button>
                   </Card>
-                ))
+                )})
               )}
             </CardContent>
           </Card>
@@ -520,7 +537,20 @@ export default function FriendsPage() {
               ) : friendRequests.length === 0 ? (
                 <p className="text-muted-foreground">No new friend requests.</p>
               ) : (
-                friendRequests.map(request => (
+                friendRequests.map(request => {
+                  let nameClass = "";
+                  let nameStyle = {};
+                  if (request.senderIsShinyGold) {
+                    nameClass = 'text-shiny-gold';
+                  } else if (request.senderIsShinySilver) {
+                    nameClass = 'text-shiny-silver';
+                  } else if (request.senderNameColor) {
+                    nameStyle = { color: request.senderNameColor };
+                  } else {
+                     nameStyle = { color: 'hsl(var(--foreground))' };
+                  }
+
+                  return (
                   <Card key={request.id} className="p-4 flex items-center justify-between shadow-sm transition-shadow hover:shadow-md">
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10 cursor-pointer" onClick={() => handleViewProfile(request.senderUsername)}>
@@ -529,8 +559,8 @@ export default function FriendsPage() {
                       </Avatar>
                       <div>
                         <p 
-                            className={cn("font-medium cursor-pointer hover:underline", request.senderIsShinyGold ? 'text-shiny-gold' : '')} 
-                            style={request.senderIsShinyGold ? {} : { color: request.senderNameColor || 'hsl(var(--foreground))' }} 
+                            className={cn("font-medium cursor-pointer hover:underline", nameClass)} 
+                            style={nameStyle} 
                             onClick={() => handleViewProfile(request.senderUsername)}
                         >
                             {request.senderUsername}
@@ -543,7 +573,7 @@ export default function FriendsPage() {
                       <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors" onClick={() => handleDeclineRequest(request.id)}><UserX className="mr-1 h-4 w-4" /> Decline</Button>
                     </div>
                   </Card>
-                ))
+                )})
               )}
             </CardContent>
           </Card>

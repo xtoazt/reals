@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 
 interface ChatInterfaceProps {
   chatTitle: string;
-  chatType: 'global' | 'gc' | 'dm' | 'ai'; // Changed 'party' to 'gc'
+  chatType: 'global' | 'gc' | 'dm' | 'ai'; 
   chatId?: string;
 }
 
@@ -31,6 +31,8 @@ interface UserProfileData {
   nameColor?: string;
   title?: string;
   isShinyGold?: boolean;
+  isShinySilver?: boolean;
+  isAdmin?: boolean; 
 }
 
 interface TypingStatus {
@@ -71,8 +73,10 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           username: uid === 'ai-chatbot-uid' ? 'realtalk_ai' : 'system', 
           displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System', 
           avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`, 
-          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a', // Purple for AI, Gray for System
-          isShinyGold: false 
+          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a', 
+          isShinyGold: false,
+          isShinySilver: false,
+          isAdmin: false,
       };
       setUsersCache(prev => ({...prev, [uid]: specialProfile}));
       return specialProfile;
@@ -90,6 +94,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           nameColor: userData.nameColor,
           title: userData.title,
           isShinyGold: userData.isShinyGold || false,
+          isShinySilver: userData.isShinySilver || false,
+          isAdmin: userData.isAdmin || false,
         };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
@@ -109,12 +115,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             if(profile) {
                 setCurrentUserProfile(profile);
             } else {
+                // Fallback basic profile if DB fetch fails or user has no specific data yet
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: user.email?.split('@')[0] || "user",
                     displayName: user.displayName || "User",
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
+                    isShinySilver: false,
+                    isAdmin: false,
                 });
             }
         });
@@ -172,6 +181,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 isOwnMessage: false,
                 senderNameColor: aiProfile?.nameColor || '#8B5CF6',
                 senderIsShinyGold: false,
+                senderIsShinySilver: false,
               }
             ]);
         });
@@ -216,6 +226,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderNameColor: profile?.nameColor || msgData.senderNameColor,
             senderTitle: profile?.title || msgData.senderTitle,
             senderIsShinyGold: profile?.isShinyGold || msgData.senderIsShinyGold || false,
+            senderIsShinySilver: profile?.isShinySilver || msgData.senderIsShinySilver || false,
         };
       });
       
@@ -280,6 +291,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderNameColor: currentUserProfile.nameColor,
             senderTitle: currentUserProfile.title,
             senderIsShinyGold: currentUserProfile.isShinyGold,
+            senderIsShinySilver: currentUserProfile.isShinySilver,
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -301,6 +313,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             isOwnMessage: false,
             senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
+            senderIsShinySilver: false,
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
@@ -319,6 +332,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             isOwnMessage: false,
             senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
+            senderIsShinySilver: false,
           };
           setMessages(prev => [...prev, errorMessage]);
           toast({
@@ -348,10 +362,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       content,
       timestamp: serverTimestamp(),
       senderIsShinyGold: currentUserProfile.isShinyGold || false,
+      senderIsShinySilver: currentUserProfile.isShinySilver || false,
     };
 
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
-    if (currentUserProfile.nameColor) {
+    // Only add nameColor if no shiny effect is active
+    if (!currentUserProfile.isShinyGold && !currentUserProfile.isShinySilver && currentUserProfile.nameColor) {
       newMessagePayload.senderNameColor = currentUserProfile.nameColor;
     }
     if (currentUserProfile.title) {
@@ -393,7 +409,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           setShowScrollToBottomButton(true);
         } else {
           setShowScrollToBottomButton(false);
-          // If button is hidden, new message flag should also be false (user is close enough to bottom)
           if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
         }
       }
@@ -445,7 +460,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden p-0 relative"> {/* Added relative positioning */}
+      <CardContent className="flex-1 overflow-hidden p-0 relative"> 
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1"> 
             {isLoadingMessages ? (

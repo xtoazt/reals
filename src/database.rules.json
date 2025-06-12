@@ -16,6 +16,8 @@
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
         "title": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
         "isShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+        "isShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
+        "isAdmin": { ".validate": "!newData.exists() || newData.isBoolean()" },
         "friendsCount": { ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0)" },
         "$other": { ".validate": false }
       }
@@ -50,6 +52,7 @@
               "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
               "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
               "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+              "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
               "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
               "timestamp": { ".validate": "newData.val() === now" },
               "$other": { ".validate": false }
@@ -64,6 +67,7 @@
             "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
             "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
             "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+             "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
             "timestamp": { ".validate": "newData.val() === now" },
             "$other": { ".validate": "!$chatId.contains('gc-') && false" }

@@ -22,6 +22,7 @@ export interface Message {
   senderNameColor?: string;
   senderTitle?: string;
   senderIsShinyGold?: boolean;
+  senderIsShinySilver?: boolean;
   avatar?: string;
   content: string;
   timestamp: string; 
@@ -144,7 +145,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         const wereFriends = areFriendsSnap.exists();
 
         updates[`/friends/${currentUser.uid}/${targetUid}`] = null;
-        updates[`/friends/${targetUid}/${currentUser.uid}`] = null;
+        updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
 
         updates[`/friend_requests/${currentUser.uid}/${targetUid}`] = null;
         updates[`/friend_requests/${targetUid}/${currentUser.uid}`] = null;
@@ -182,14 +183,24 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         return;
     }
     
+    let nameStyleClass = '';
+    let nameInlineStyle = {};
+    if (message.senderIsShinyGold) {
+        nameStyleClass = 'text-shiny-gold';
+    } else if (message.senderIsShinySilver) {
+        nameStyleClass = 'text-shiny-silver';
+    } else if (message.senderNameColor) {
+        nameInlineStyle = { color: message.senderNameColor };
+    }
+
     toast({
       title: (
         <div className="flex items-center">
-            <span className={cn(message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={!message.senderIsShinyGold ? {color: message.senderNameColor || 'inherit'} : {}}>
+            <span className={cn(nameStyleClass)} style={nameInlineStyle}>
                 @{message.senderUsername}
             </span>
             {message.senderTitle && 
-                <span className={cn("ml-1.5 text-xs italic", message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={!message.senderIsShinyGold ? {color: message.senderNameColor || 'hsl(var(--foreground))'} : {}}>
+                <span className={cn("ml-1.5 text-xs italic", nameStyleClass)} style={nameInlineStyle}>
                     {message.senderTitle}
                 </span>
             }
@@ -239,7 +250,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
               </a>
             );
         } catch (e) {
-            return part; // if URL parsing fails, render as text
+            return part; 
         }
       }
       return part;
@@ -247,8 +258,28 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-  const senderNameStyle = (!message.senderIsShinyGold && message.senderNameColor) ? { color: message.senderNameColor } : {};
-  const senderTitleStyle = (!message.senderIsShinyGold && message.senderNameColor) ? { color: message.senderNameColor } : { color: 'hsl(var(--foreground))'};
+  
+  let senderNameClassName = message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline";
+  let senderNameStyle = {};
+  if (message.senderIsShinyGold) {
+    senderNameClassName = cn(senderNameClassName, 'text-shiny-gold');
+  } else if (message.senderIsShinySilver) {
+    senderNameClassName = cn(senderNameClassName, 'text-shiny-silver');
+  } else if (message.senderNameColor) {
+    senderNameStyle = { color: message.senderNameColor };
+  }
+
+  let senderTitleClassName = "text-xs font-medium italic flex items-center shrink-0";
+  let senderTitleStyle = { color: 'hsl(var(--foreground))' };
+   if (message.senderIsShinyGold) {
+    senderTitleClassName = cn(senderTitleClassName, 'text-shiny-gold');
+    senderTitleStyle = {};
+  } else if (message.senderIsShinySilver) {
+    senderTitleClassName = cn(senderTitleClassName, 'text-shiny-silver');
+    senderTitleStyle = {};
+  } else if (message.senderNameColor) {
+     senderTitleStyle = { color: message.senderNameColor };
+  }
 
 
   return (
@@ -278,17 +309,14 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
           <div className="flex items-center justify-between gap-2">
            <div className="flex items-baseline gap-1 flex-wrap"> 
             <p
-                className={cn(
-                  "text-xs font-semibold",
-                  message.senderIsShinyGold ? 'text-shiny-gold' : (message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline")
-                )}
+                className={cn("text-xs font-semibold", senderNameClassName)}
                 style={senderNameStyle}
                 onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' ? showUserInteractionToast : undefined}
               >
                 {message.sender}
               </p>
               {message.senderTitle && (
-                <p className={cn("text-xs font-medium italic flex items-center shrink-0", message.senderIsShinyGold ? 'text-shiny-gold' : '')} style={senderTitleStyle}> 
+                <p className={cn(senderTitleClassName)} style={senderTitleStyle}> 
                   {message.senderTitle}
                 </p>
               )}

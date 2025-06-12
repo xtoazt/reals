@@ -46,8 +46,10 @@ export function AuthForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = React.useState(false);
-  const [showSpecialFields, setShowSpecialFields] = React.useState(false);
-  const [isShinyGoldMode, setIsShinyGoldMode] = React.useState(false);
+  const [showSpecialFields, setShowSpecialFields] = React.useState(false); // For title input and possibly nameColor
+  const [isShinyGoldSignup, setIsShinyGoldSignup] = React.useState(false); // For "asd" code
+  const [isShinySilverSignup, setIsShinySilverSignup] = React.useState(false); // For "qwe" code
+  const [isAdminSignup, setIsAdminSignup] = React.useState(false); // For "asd" code
   const [isLoading, setIsLoading] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState("login");
 
@@ -74,25 +76,34 @@ export function AuthForm() {
   const watchSpecialCode = signupForm.watch('specialCode');
 
   React.useEffect(() => {
-    if (watchSpecialCode === '1234') {
-      setShowSpecialFields(true);
-      setIsShinyGoldMode(false);
+    // Reset special flags first
+    setShowSpecialFields(false);
+    setIsShinyGoldSignup(false);
+    setIsShinySilverSignup(false);
+    setIsAdminSignup(false);
+    signupForm.setValue('nameColor', '#FFA500'); // Reset name color default
+
+    if (watchSpecialCode === 'asd') {
+      setShowSpecialFields(true); // For title
+      setIsAdminSignup(true);
+      setIsShinyGoldSignup(true);
       toast({
-        title: 'Special Mode Activated!',
-        description: 'You can now set a custom name color and title.',
-      });
-    } else if (watchSpecialCode === 'qwe') {
-      setShowSpecialFields(true); 
-      setIsShinyGoldMode(true);
-      toast({
-        title: '✨ Shiny Gold Mode Activated! ✨',
+        title: '👑 Admin & Shiny Gold Mode Activated! ✨',
         description: 'Your name and title will be shiny gold and bold!',
       });
-      signupForm.setValue('nameColor', ''); 
-    }
-     else {
-      setShowSpecialFields(false);
-      setIsShinyGoldMode(false);
+    } else if (watchSpecialCode === 'qwe') {
+      setShowSpecialFields(true); // For title
+      setIsShinySilverSignup(true);
+      toast({
+        title: '🥈 Shiny Silver Mode Activated! 🥈',
+        description: 'Your name and title will be shiny silver and bold!',
+      });
+    } else if (watchSpecialCode === '1234') {
+      setShowSpecialFields(true); // For title & nameColor
+      toast({
+        title: '🎨 Special Mode Activated!',
+        description: 'You can now set a custom name color and title.',
+      });
     }
   }, [watchSpecialCode, toast, signupForm]);
 
@@ -154,14 +165,14 @@ export function AuthForm() {
 
       if (user) {
         await updateProfile(user, {
-            displayName: values.username, // Use username as displayName for Auth system
+            displayName: values.username, 
         });
 
         const userProfileRef = ref(database, `users/${user.uid}`);
         const profileData: {
             uid: string;
             username: string; 
-            displayName: string; // This will also be the username
+            displayName: string; 
             email: string; 
             nameColor?: string;
             title?: string;
@@ -169,25 +180,31 @@ export function AuthForm() {
             avatar: string;
             banner?: string;
             isShinyGold?: boolean;
+            isShinySilver?: boolean;
+            isAdmin?: boolean;
             friendsCount: number;
         } = {
             uid: user.uid,
             username: lowerCaseLoginUsername, 
-            displayName: values.username, // Store username as displayName in DB
+            displayName: values.username, 
             email: emailForAuth, 
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             banner: `https://placehold.co/1200x300.png?text=Hello+${values.username}`,
             bio: "New user! Ready to chat.",
             friendsCount: 0,
+            isAdmin: isAdminSignup,
+            isShinyGold: isShinyGoldSignup,
+            isShinySilver: isShinySilverSignup,
         };
 
-        if (isShinyGoldMode && values.specialCode === 'qwe') {
-            profileData.isShinyGold = true;
+        if (showSpecialFields) {
             profileData.title = values.title || '';
-        } else if (showSpecialFields && values.specialCode === '1234') {
-            profileData.nameColor = values.nameColor || '#FFA500'; 
-            profileData.title = values.title || '';
+            // Only set nameColor if no shiny style is active
+            if (!isShinyGoldSignup && !isShinySilverSignup && watchSpecialCode === '1234') {
+                 profileData.nameColor = values.nameColor || '#FFA500';
+            }
         }
+        
         await set(userProfileRef, profileData);
         await set(usernameNodeRef, user.uid);
 
@@ -351,7 +368,7 @@ export function AuthForm() {
                   )}
                 />
 
-                {showSpecialFields && !isShinyGoldMode && (
+                {showSpecialFields && !isShinyGoldSignup && !isShinySilverSignup && watchSpecialCode === '1234' && (
                   <FormField
                     control={signupForm.control}
                     name="nameColor"

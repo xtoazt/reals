@@ -22,14 +22,16 @@ import { cn } from '@/lib/utils';
 
 interface UserProfileData {
   uid: string;
-  username: string; // This will also serve as display name
-  displayName: string; // Kept for compatibility, will mirror username
+  username: string; 
+  displayName: string; 
   avatar: string; 
   banner?: string; 
   bio: string;
   title?: string;
   nameColor?: string;
   isShinyGold?: boolean;
+  isShinySilver?: boolean;
+  isAdmin?: boolean;
   friendsCount?: number;
 }
 
@@ -99,13 +101,15 @@ export default function ViewProfilePage() {
           profileData = {
             uid: uid,
             username: data.username,
-            displayName: data.displayName || data.username, // Ensure displayName reflects username
+            displayName: data.displayName || data.username, 
             avatar: data.avatar || `https://placehold.co/128x128.png?text=${data.username?.substring(0,2).toUpperCase() || '??'}`,
             banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
             bio: data.bio || "No bio yet.",
             title: data.title,
             nameColor: data.nameColor,
             isShinyGold: data.isShinyGold || false,
+            isShinySilver: data.isShinySilver || false,
+            isAdmin: data.isAdmin || false,
             friendsCount: data.friendsCount || 0,
           };
           setViewedUserProfile(profileData);
@@ -158,8 +162,30 @@ export default function ViewProfilePage() {
     );
   }
   
-  const userDisplayNameFinalStyle = viewedUserProfile.isShinyGold ? {} : (viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'});
-  const userTitleFinalStyle = viewedUserProfile.isShinyGold ? {} : (viewedUserProfile.nameColor ? { color: viewedUserProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  let userDisplayNameClasses = "text-3xl font-bold font-headline";
+  let userDisplayNameStyle = {};
+  if (viewedUserProfile.isShinyGold) {
+    userDisplayNameClasses = cn(userDisplayNameClasses, 'text-shiny-gold');
+  } else if (viewedUserProfile.isShinySilver) {
+    userDisplayNameClasses = cn(userDisplayNameClasses, 'text-shiny-silver');
+  } else if (viewedUserProfile.nameColor) {
+    userDisplayNameStyle = { color: viewedUserProfile.nameColor };
+  } else {
+     userDisplayNameStyle = { color: 'hsl(var(--foreground))' };
+  }
+
+  let userTitleClasses = "text-sm font-semibold italic";
+  let userTitleStyle = {};
+  if (viewedUserProfile.isShinyGold) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-gold');
+  } else if (viewedUserProfile.isShinySilver) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-silver');
+  } else if (viewedUserProfile.nameColor) {
+    userTitleStyle = { color: viewedUserProfile.nameColor };
+  } else {
+    userTitleStyle = { color: 'hsl(var(--foreground))' };
+  }
+
   const avatarFallbackText = viewedUserProfile.username?.split(' ').map(n => n[0]).join('') || viewedUserProfile.username?.charAt(0) || 'U';
 
 
@@ -187,14 +213,15 @@ export default function ViewProfilePage() {
               </Avatar>
             </div>
             <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
-              <h1 className={cn("text-3xl font-bold font-headline", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameFinalStyle}>
-                {viewedUserProfile.username} {/* Display username as the main name */}
+              <h1 className={cn(userDisplayNameClasses)} style={userDisplayNameStyle}>
+                {viewedUserProfile.username} 
               </h1>
               {viewedUserProfile.title && (
-                <p className={cn("text-sm font-semibold italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>
+                <p className={cn(userTitleClasses)} style={userTitleStyle}>
                   {viewedUserProfile.title}
                 </p>
               )}
+              {viewedUserProfile.isAdmin && <p className="text-xs text-destructive font-semibold">(Admin)</p>}
               <div className="text-sm text-muted-foreground flex items-center justify-center md:justify-start mt-1">
                 <Users size={16} className="mr-1"/> Friends: {viewedUserProfile.friendsCount ?? 0}
               </div>
@@ -249,11 +276,11 @@ export default function ViewProfilePage() {
               </div>
                {viewedUserProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>Title:</span></Label>
-                  <Input id="titleInput" value={viewedUserProfile.title} disabled className={cn("italic", viewedUserProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleFinalStyle}/>
+                  <Label htmlFor="titleInput"><span className={cn(userTitleClasses, "text-sm font-semibold italic")}>Title:</span></Label>
+                  <Input id="titleInput" value={viewedUserProfile.title} disabled className={cn(userTitleClasses, "italic text-base")} style={userTitleStyle}/>
                 </div>
               )}
-              {viewedUserProfile.nameColor && !viewedUserProfile.isShinyGold && (
+              {viewedUserProfile.nameColor && !viewedUserProfile.isShinyGold && !viewedUserProfile.isShinySilver && (
                 <div>
                   <Label htmlFor="nameColorDisplay" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
                   <div className="flex items-center gap-2">
@@ -269,4 +296,3 @@ export default function ViewProfilePage() {
     </div>
   );
 }
-

@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText } from 'lucide-react'; // Added MessageSquareText
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText } from 'lucide-react'; 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,7 +17,7 @@ import {
   DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
-import { CreateGCDialog } from './create-gc-dialog'; // Renamed from CreatePartyDialog
+import { CreateGCDialog } from './create-gc-dialog'; 
 import { ThemeToggle } from '@/components/theme-toggle'; 
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -43,6 +43,8 @@ interface UserProfileData {
   nameColor?: string;
   title?: string;
   isShinyGold?: boolean;
+  isShinySilver?: boolean;
+  isAdmin?: boolean;
   username?: string; 
 }
 
@@ -92,10 +94,18 @@ export function TopNavBar() {
               nameColor: data.nameColor,
               title: data.title,
               isShinyGold: data.isShinyGold || false,
+              isShinySilver: data.isShinySilver || false,
+              isAdmin: data.isAdmin || false,
               username: data.username, 
             });
           } else {
-            setUserProfileData({ displayName: user.displayName || "User", isShinyGold: false, username: user.email?.split('@')[0] });
+             setUserProfileData({ 
+                displayName: user.displayName || "User", 
+                isShinyGold: false, 
+                isShinySilver: false,
+                isAdmin: false,
+                username: user.email?.split('@')[0] 
+            });
           }
         });
       } else {
@@ -166,8 +176,6 @@ export function TopNavBar() {
     if (pathname.startsWith('/dashboard/chat/')) {
       if (pathname === '/dashboard/chat/global') return '/dashboard/chat/global';
       if (pathname === '/dashboard/chat/ai-chatbot') return '/dashboard/chat/ai-chatbot';
-      // For GCs or DMs, we don't have a specific nav item, so it won't match.
-      // The dashboard layout will handle the content.
     }
     const currentBase = navItems.find(item => item.href !== '/dashboard' && pathname.startsWith(item.href));
     return currentBase ? currentBase.href : '/dashboard';
@@ -186,8 +194,28 @@ export function TopNavBar() {
   }, [notifications]);
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
-  const userDisplayNameFinalStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : {});
-  const userTitleFinalStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--muted-foreground))'});
+  
+  let userDisplayNameClasses = "";
+  let userDisplayNameStyle = {};
+  if (userProfileData?.isShinyGold) {
+    userDisplayNameClasses = 'text-shiny-gold';
+  } else if (userProfileData?.isShinySilver) {
+    userDisplayNameClasses = 'text-shiny-silver';
+  } else if (userProfileData?.nameColor) {
+    userDisplayNameStyle = { color: userProfileData.nameColor };
+  }
+
+  let userTitleClasses = "text-xs leading-none italic";
+  let userTitleStyle = { color: 'hsl(var(--muted-foreground))' };
+  if (userProfileData?.isShinyGold) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-gold');
+    userTitleStyle = {};
+  } else if (userProfileData?.isShinySilver) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-silver');
+    userTitleStyle = {};
+  } else if (userProfileData?.nameColor) {
+     userTitleStyle = { color: userProfileData.nameColor };
+  }
 
 
   return (
@@ -321,11 +349,11 @@ export function TopNavBar() {
               <>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className={cn("text-sm font-medium leading-none", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameFinalStyle}>
+                    <p className={cn("text-sm font-medium leading-none", userDisplayNameClasses)} style={userDisplayNameStyle}>
                       {userProfileData.displayName}
                     </p>
                     {userProfileData.title && (
-                      <p className={cn("text-xs leading-none italic", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>
+                      <p className={cn(userTitleClasses)} style={userTitleStyle}>
                         {userProfileData.title}
                       </p>
                     )}

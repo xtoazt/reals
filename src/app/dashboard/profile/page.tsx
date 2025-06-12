@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -12,8 +12,8 @@ import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2 } from
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { ref, onValue, update, get, off, remove as removeDb } from 'firebase/database';
+import { onAuthStateChanged, type User as FirebaseUser, deleteUser } from 'firebase/auth';
+import { ref, onValue, update, off, remove as removeDb } from 'firebase/database';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -32,14 +32,16 @@ import {
 
 interface UserProfile {
   uid: string;
-  username: string; // This will also serve as display name
-  displayName: string; // Kept for compatibility, will mirror username
+  username: string; 
+  displayName: string; 
   avatar: string; 
   banner?: string; 
   bio: string;
   title?: string;
   nameColor?: string;
   isShinyGold?: boolean;
+  isShinySilver?: boolean;
+  isAdmin?: boolean;
   friendsCount?: number; 
 }
 
@@ -76,13 +78,15 @@ export default function ProfilePage() {
             setUserProfile({
               uid: user.uid,
               username: data.username || (user.email?.split('@')[0] || "User"),
-              displayName: data.displayName || data.username || user.displayName || "User", // Ensure displayName reflects username
+              displayName: data.displayName || data.username || user.displayName || "User", 
               avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.username || "U").substring(0,2).toUpperCase()}`,
               banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
               bio: data.bio || "No bio yet.",
               title: data.title,
               nameColor: data.nameColor,
               isShinyGold: data.isShinyGold || false,
+              isShinySilver: data.isShinySilver || false,
+              isAdmin: data.isAdmin || false,
               friendsCount: data.friendsCount || 0, 
             });
             setBioEdit(data.bio || "");
@@ -91,12 +95,14 @@ export default function ProfilePage() {
             const basicProfile: UserProfile = {
               uid: user.uid,
               username: fallbackUsername,
-              displayName: fallbackUsername, // Ensure displayName reflects username
+              displayName: fallbackUsername, 
               avatar: `https://placehold.co/128x128.png?text=${(fallbackUsername).substring(0,2).toUpperCase()}`,
               banner: "https://placehold.co/1200x300.png?text=Banner",
               bio: "New user! Ready to chat.",
               friendsCount: 0,
               isShinyGold: false,
+              isShinySilver: false,
+              isAdmin: false,
             };
             setUserProfile(basicProfile);
             setBioEdit(basicProfile.bio);
@@ -218,14 +224,11 @@ export default function ProfilePage() {
     }
     setIsDeletingAccount(true);
     try {
-      // 1. Delete user data from Realtime Database
       const userNodeRef = ref(database, `users/${currentUser.uid}`);
       await removeDb(userNodeRef);
       const usernameNodeRef = ref(database, `usernames/${userProfile.username.toLowerCase()}`);
       await removeDb(usernameNodeRef);
-      // Add deletion for other user-related data (friends, requests, etc.) here if necessary
 
-      // 2. Delete user from Firebase Authentication
       await deleteUser(currentUser);
 
       toast({ title: "Account Deleted", description: "Your account and associated data have been successfully deleted." });
@@ -265,8 +268,29 @@ export default function ProfilePage() {
     );
   }
   
-  const userDisplayNameFinalStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
-  const userTitleFinalStyle = userProfile.isShinyGold ? {} : (userProfile.nameColor ? { color: userProfile.nameColor } : { color: 'hsl(var(--foreground))'});
+  let userDisplayNameClasses = "text-3xl font-bold font-headline";
+  let userDisplayNameStyle = {};
+  if (userProfile.isShinyGold) {
+    userDisplayNameClasses = cn(userDisplayNameClasses, 'text-shiny-gold');
+  } else if (userProfile.isShinySilver) {
+    userDisplayNameClasses = cn(userDisplayNameClasses, 'text-shiny-silver');
+  } else if (userProfile.nameColor) {
+    userDisplayNameStyle = { color: userProfile.nameColor };
+  } else {
+    userDisplayNameStyle = { color: 'hsl(var(--foreground))'};
+  }
+
+  let userTitleClasses = "text-sm font-semibold italic";
+  let userTitleStyle = {};
+   if (userProfile.isShinyGold) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-gold');
+  } else if (userProfile.isShinySilver) {
+    userTitleClasses = cn(userTitleClasses, 'text-shiny-silver');
+  } else if (userProfile.nameColor) {
+     userTitleStyle = { color: userProfile.nameColor };
+  } else {
+    userTitleStyle = { color: 'hsl(var(--foreground))'};
+  }
 
 
   return (
@@ -316,14 +340,15 @@ export default function ProfilePage() {
               </Button>
             </div>
             <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> 
-              <h1 className={cn("text-3xl font-bold font-headline", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameFinalStyle}>
-                {userProfile.username} {/* Display username as the main name */}
+              <h1 className={cn(userDisplayNameClasses)} style={userDisplayNameStyle}>
+                {userProfile.username} 
               </h1>
               {userProfile.title && (
-                <p className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>
+                <p className={cn(userTitleClasses)} style={userTitleStyle}>
                   {userProfile.title}
                 </p>
               )}
+              {userProfile.isAdmin && <p className="text-xs text-destructive font-semibold">(Admin)</p>}
               {authEmail && <p className="text-xs text-muted-foreground/70">(Auth System Email: {authEmail})</p>}
               <div className="text-sm text-muted-foreground flex items-center justify-center md:justify-start mt-1">
                 <Users size={16} className="mr-1"/> Friends: {userProfile.friendsCount ?? 0}
@@ -365,11 +390,11 @@ export default function ProfilePage() {
               </div>
                {userProfile.title && (
                 <div>
-                  <Label htmlFor="titleInput"><span className={cn("text-sm font-semibold italic", userProfile.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>Title:</span></Label>
-                  <Input id="titleInput" value={userProfile.title} disabled className={cn("italic", userProfile.isShinyGold ? 'text-shiny-gold font-bold' : '')} style={userTitleFinalStyle}/>
+                  <Label htmlFor="titleInput"><span className={cn(userTitleClasses, "text-sm font-semibold italic")}>Title:</span></Label>
+                  <Input id="titleInput" value={userProfile.title} disabled className={cn(userTitleClasses, "italic text-base")} style={userTitleStyle}/>
                 </div>
               )}
-              {userProfile.nameColor && !userProfile.isShinyGold && (
+              {userProfile.nameColor && !userProfile.isShinyGold && !userProfile.isShinySilver && (
                 <div>
                   <Label htmlFor="nameColorDisplay" className="flex items-center"><Palette size={14} className="mr-1" />Name Color</Label>
                   <div className="flex items-center gap-2">
@@ -427,4 +452,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-

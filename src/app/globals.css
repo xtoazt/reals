@@ -213,17 +213,46 @@
       #E8E0B8, /* Softer Light Yellow Gold */
       #B08030  /* Softer Darker Gold */
     );
-    background-size: 400% 100%; /* Wider waves */
+    background-size: 400% 100%;
     -webkit-background-clip: text;
     -moz-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     -moz-text-fill-color: transparent;
     text-fill-color: transparent; 
-    animation: shiny-gold-text-anim 5s linear infinite; /* Slower animation */
+    animation: shiny-gold-text-anim 5s linear infinite;
   }
 
   @keyframes shiny-gold-text-anim {
+    0% {
+      background-position: 200% center;
+    }
+    100% {
+      background-position: -200% center;
+    }
+  }
+
+  .text-shiny-silver {
+    font-weight: 700; 
+    background: linear-gradient(
+      90deg,
+      #A0A0A0, /* Medium Grey */
+      #E8E8E8, /* Light Grey */
+      #B8B8B8, /* Light-Medium Grey */
+      #DCDCDC, /* Very Light Grey (Whitesmoke) */
+      #909090  /* Darker Medium Grey */
+    );
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    -moz-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -moz-text-fill-color: transparent;
+    text-fill-color: transparent; 
+    animation: shiny-silver-text-anim 5s linear infinite;
+  }
+
+   @keyframes shiny-silver-text-anim {
     0% {
       background-position: 200% center;
     }
