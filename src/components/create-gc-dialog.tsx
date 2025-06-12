@@ -41,12 +41,10 @@ interface UserProfileData {
   nameColor?: string;
 }
 
-// Define a type for usersCache to handle profiles that might not be found
-type UserCacheEntry = UserProfileData | null; // null indicates fetched but not found
+type UserCacheEntry = UserProfileData | null;
 interface UsersCache {
   [uid: string]: UserCacheEntry;
 }
-
 
 interface CreateGCDialogProps {
   children?: React.ReactNode;
@@ -68,7 +66,6 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
-
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -100,40 +97,14 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
-  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    try {
-      const userRef = ref(database, `users/${uid}`);
-      const snapshot = await get(userRef);
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const profile: UserProfileData = {
-          uid,
-          username: userData.username || "unknown_user",
-          displayName: userData.displayName || "Unknown User", // Will be username if simplified
-          avatar: userData.avatar,
-          nameColor: userData.nameColor,
-        };
-        setUsersCache(prevCache => ({ ...prevCache, [uid]: profile }));
-        return profile;
-      }
-      setUsersCache(prevCache => ({ ...prevCache, [uid]: null })); // Mark as fetched but not found
-      console.warn(`User profile not found for UID in fetchAndCache: ${uid}`);
-      return null;
-    } catch (error) {
-      console.error("Error fetching user profile in fetchAndCache:", error);
-      setUsersCache(prevCache => ({ ...prevCache, [uid]: null })); // Mark as fetched with error
-      return null;
-    }
-  }, []); // setUsersCache is stable, so empty array is fine.
-
   // Effect 1: Listen to Firebase for friend UIDs when dialog is open and user is available
   useEffect(() => {
     if (!currentUser || !isOpen) {
-      setFriendUIDs([]); // Clear UIDs if dialog is closed or no user
+      setFriendUIDs([]); 
       return;
     }
 
-    setIsLoadingFriends(true); // Start loading when we begin fetching UIDs
+    setIsLoadingFriends(true); 
     const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
     const listener = onValue(friendsDbRef, (snapshot) => {
       const friendsData = snapshot.val();
@@ -150,43 +121,64 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     };
   }, [currentUser, isOpen, toast]);
 
-  // Effect 2: Fetch profiles for UIDs in friendUIDs if not already in usersCache
+
+  // This function fetches and updates the cache. It's memoized for stability.
+  const fetchAndCacheUserProfile = useCallback(async (uid: string) => {
+    try {
+      const userRef = ref(database, `users/${uid}`);
+      const snapshot = await get(userRef);
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const profile: UserProfileData = {
+          uid,
+          username: userData.username || "unknown_user",
+          displayName: userData.displayName || "Unknown User",
+          avatar: userData.avatar,
+          nameColor: userData.nameColor,
+        };
+        setUsersCache(prevCache => ({ ...prevCache, [uid]: profile }));
+      } else {
+        setUsersCache(prevCache => ({ ...prevCache, [uid]: null })); // Mark as fetched but not found
+      }
+    } catch (error) {
+      console.error("Error fetching user profile in fetchAndCache:", error);
+      setUsersCache(prevCache => ({ ...prevCache, [uid]: null })); // Mark as fetched with error
+    }
+  }, [setUsersCache]); // setUsersCache is stable
+
+  // Effect 2: Orchestrate Profile Fetches.
+  // This effect runs when the list of friend UIDs changes, or when the dialog opens/closes.
   useEffect(() => {
     if (!isOpen || friendUIDs.length === 0) {
-      // If no UIDs or dialog closed, ensure loading is false if not already handled
-      if(friendUIDs.length === 0 && isOpen) setIsLoadingFriends(false);
-      return;
+        // If dialog closed or no UIDs, ensure loading is false if not handled by Effect 3
+        if(!isOpen) setIsLoadingFriends(false);
+        return;
     }
 
-    let aFetchIsNeeded = false;
-    friendUIDs.forEach(uid => {
-      if (usersCache[uid] === undefined) { // Only fetch if not in cache (undefined means never tried)
-        aFetchIsNeeded = true;
-        fetchAndCacheUserProfile(uid);
-      }
-    });
-    // If we initiated fetches, isLoadingFriends remains true.
-    // If all UIDs were already in cache, loading might be finished.
-    // This logic is simplified; Effect 3 will manage final isLoadingFriends state.
-    if (!aFetchIsNeeded && friendUIDs.length > 0) {
-        // All profiles are already cached or marked as null (not found/error)
-        const allProfilesAttempted = friendUIDs.every(uid => usersCache[uid] !== undefined);
-        if(allProfilesAttempted) setIsLoadingFriends(false);
+    const uidsToFetch = friendUIDs.filter(uid => usersCache[uid] === undefined);
+
+    if (uidsToFetch.length > 0) {
+        setIsLoadingFriends(true); // Set loading true if we are about to fetch.
+        // Fire off all fetches. The usersCache updates will trigger Effect 3.
+        Promise.allSettled(uidsToFetch.map(uid => fetchAndCacheUserProfile(uid)));
     }
+    // If no UIDs need fetching (all are defined in cache), isLoadingFriends will be handled by Effect 3.
+  }, [friendUIDs, isOpen, fetchAndCacheUserProfile, usersCache]); // usersCache is added here to re-evaluate if UIDs to fetch might change due to an external cache update
 
-  }, [friendUIDs, usersCache, isOpen, fetchAndCacheUserProfile]);
 
-  // Effect 3: Rebuild friendsList when usersCache or friendUIDs changes
+  // Effect 3: Rebuild friendsList and set final isLoadingFriends state
+  // This effect runs when usersCache or friendUIDs list changes (or dialog opens/closes).
   useEffect(() => {
     if (!isOpen) {
       setFriendsList([]);
+      setIsLoadingFriends(false); // Ensure loading is false when dialog is closed.
       return;
     }
 
     const newFriendsList = friendUIDs
       .map(uid => {
         const profile = usersCache[uid];
-        if (profile) { // Check if profile is not null (i.e., successfully fetched)
+        if (profile) { // Check if profile is not null (i.e., successfully fetched and valid)
           return {
             id: uid,
             username: profile.username,
@@ -201,27 +193,23 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
     setFriendsList(newFriendsList);
 
-    // Update loading state: true if there are UIDs but not all have been processed (either successfully or marked as not found/error)
+    // Final check for loading state:
+    // If there are friend UIDs, check if all of them have been attempted (i.e., have an entry in usersCache, even if null).
     if (friendUIDs.length > 0) {
       const allProfilesAttempted = friendUIDs.every(uid => usersCache[uid] !== undefined);
       setIsLoadingFriends(!allProfilesAttempted);
     } else {
-      setIsLoadingFriends(false); // No UIDs, so not loading
+      setIsLoadingFriends(false); // No UIDs, so not loading.
     }
-
   }, [friendUIDs, usersCache, isOpen]);
 
-
+  // Effect 4: Reset state when dialog closes
   useEffect(() => {
-    // Reset state when dialog closes
     if (!isOpen) {
       setGCName('');
       setSelectedFriends([]);
       setIsCreatingGC(false);
-      // setUsersCache({}); // Optionally clear cache, or keep for faster re-open
-      // setFriendUIDs([]); // Already handled by Effect 1
-      // setFriendsList([]); // Already handled by Effect 3
-      setIsLoadingFriends(false);
+      // setUsersCache({}); // Optionally clear cache, or keep for faster re-open. Keeping it for now.
     }
   }, [isOpen]);
 
@@ -278,7 +266,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         description: `"${gcName}" is ready.`,
       });
 
-      setIsOpen(false);
+      setIsOpen(false); // This will trigger Effect 4 for cleanup
       router.push(`/dashboard/chat/${newGCId}`);
     } catch (error) {
       console.error("Error creating GC:", error);
@@ -379,3 +367,5 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     </Dialog>
   );
 }
+
+    
