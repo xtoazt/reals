@@ -3,27 +3,31 @@
 
 import { ChatInterface } from '@/components/chat/chat-interface';
 import { notFound, useRouter } from 'next/navigation';
-import React, { useEffect, useState } from 'react'; // Changed to import React for React.use
+import React, { useEffect, useState } from 'react'; 
 import { auth, database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button'; // Added Button import
 
-interface ResolvedParams { // Shape of params after unwrapping
+interface ResolvedParams { 
   chatId: string;
 }
 
-interface ChatPageProps { // Props for the component
-  params: Promise<ResolvedParams>; // params prop is a Promise
+interface ChatPageProps { 
+  params: Promise<ResolvedParams>; 
 }
 
 interface UserProfileData {
   displayName: string;
-  // Add other fields if needed, e.g., avatar for chat header
+}
+
+interface GCChatData { // For GC specific data from chats/{chatId}
+    gcName: string;
+    members?: { [uid: string]: boolean };
 }
 
 export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
-  // Unwap the params Promise using React.use()
   const params = React.use(paramsPromise);
   const unwrappedChatId = params.chatId; 
 
@@ -31,13 +35,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
-  const [chatType, setChatType] = useState<'global' | 'party' | 'dm' | 'ai'>('global');
-  // Use a state for chatId that is initialized by the unwrapped param
-  // This helps manage its lifecycle consistently within the component's effects.
+  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global'); // Changed 'party' to 'gc'
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
 
-  // Effect to update resolvedChatId if unwrappedChatId from params changes.
-  // This could happen if the user navigates between chat pages.
   useEffect(() => {
     setResolvedChatId(unwrappedChatId);
   }, [unwrappedChatId]);
@@ -45,17 +45,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      // Removed authentication check for global/ai-chatbot, as it might be desired for logged-out users too
     });
     return () => unsubscribe();
-  }, [router]); // Removed resolvedChatId from deps as auth state is general
+  }, [router]);
 
   useEffect(() => {
-    // This effect now primarily depends on resolvedChatId and currentUser
-    // to determine the chat context.
     setIsLoading(true);
     let determinedTitle = '';
-    let determinedType: 'global' | 'party' | 'dm' | 'ai' = 'global';
+    let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global'; // Changed 'party' to 'gc'
 
     const setupChat = async () => {
       if (resolvedChatId === 'global') {
@@ -66,7 +63,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         determinedType = 'ai';
       } else if (resolvedChatId && resolvedChatId.startsWith('dm_')) {
         determinedType = 'dm';
-        if (currentUser && currentUser.uid) { // Ensure currentUser is available for DM logic
+        if (currentUser && currentUser.uid) { 
           const uids = resolvedChatId.substring(3).split('_');
           const otherUserId = uids.find(uid => uid !== currentUser.uid);
 
@@ -78,15 +75,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 const userData = snapshot.val() as UserProfileData;
                 determinedTitle = `Chat with ${userData.displayName || 'User'}`;
               } else {
-                determinedTitle = 'Chat with User'; // Fallback
+                determinedTitle = 'Chat with User'; 
                 console.warn(`User profile not found for DM partner: ${otherUserId}`);
               }
             } catch (error) {
               console.error("Error fetching DM user profile:", error);
-              determinedTitle = 'Chat with User'; // Fallback on error
+              determinedTitle = 'Chat with User'; 
             }
           } else {
-            // This case might indicate an invalid DM chatId or the current user is not part of it.
             determinedTitle = 'Direct Message'; 
             if (currentUser.uid && !uids.includes(currentUser.uid)) {
                 console.error("Current user not part of this DM channel based on chatId:", resolvedChatId);
@@ -97,20 +93,34 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
             }
           }
         } else if (!currentUser) {
-           // If it's a DM and currentUser is not yet loaded, show loading.
-           // This state will be resolved when currentUser becomes available.
           setChatTitle('Loading DM...');
-          setIsLoading(true); // Explicitly keep loading
-          return; // Exit early, setupChat will re-run when currentUser is set
+          setIsLoading(true); 
+          return; 
         } else {
-            // Should not happen if currentUser.uid is required above, but as a fallback
             determinedTitle = 'Direct Message';
         }
-      } else if (resolvedChatId) { // For dynamic party chats (e.g., "party-someid")
-        determinedTitle = `Party: ${resolvedChatId}`; // Basic title for now
-        determinedType = 'party';
+      } else if (resolvedChatId && resolvedChatId.startsWith('gc-')) { // Check for 'gc-' prefix
+        determinedType = 'gc';
+        try {
+            const gcRef = ref(database, `chats/${resolvedChatId}`);
+            const gcSnapshot = await get(gcRef);
+            if (gcSnapshot.exists()) {
+                const gcData = gcSnapshot.val() as GCChatData;
+                determinedTitle = gcData.gcName || `Group Chat: ${resolvedChatId.substring(3, 15)}...`; // Use gcName or fallback
+                 // Optional: Check if current user is a member
+                if (currentUser && gcData.members && !gcData.members[currentUser.uid]) {
+                    console.warn("Current user is not a member of this GC:", resolvedChatId);
+                    determinedTitle = "Access Denied to GC"; // Or some other appropriate message
+                }
+            } else {
+                determinedTitle = "Group Chat Not Found";
+                console.warn(`GC data not found for chatId: ${resolvedChatId}`);
+            }
+        } catch (error) {
+            console.error("Error fetching GC details:", error);
+            determinedTitle = "Error Loading GC";
+        }
       } else {
-        // Fallback or error if resolvedChatId is undefined/empty
         determinedTitle = "Invalid Chat";
         setIsLoading(false);
         return;
@@ -123,9 +133,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
 
     setupChat();
 
-  }, [resolvedChatId, currentUser]); // Key dependencies for setting up the chat
+  }, [resolvedChatId, currentUser]); 
 
-  if (isLoading && !chatTitle) { // More robust loading check
+  if (isLoading && !chatTitle) { 
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -134,11 +144,11 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     );
   }
   
-  if (!isLoading && (!chatTitle || chatTitle === "Invalid DM")) { // Handle invalid DM state
+  if (!isLoading && (!chatTitle || chatTitle === "Invalid DM" || chatTitle === "Access Denied to GC" || chatTitle === "Group Chat Not Found" || chatTitle === "Error Loading GC" || chatTitle === "Invalid Chat")) { 
       return (
-        <div className="flex flex-col justify-center items-center h-full text-center">
+        <div className="flex flex-col justify-center items-center h-full text-center p-4">
           <p className="text-lg font-semibold">Could not load chat information.</p>
-          <p className="text-muted-foreground">The chat may be invalid or you might not have access.</p>
+          <p className="text-muted-foreground">The chat may be invalid, not found, or you might not have access.</p>
           <Button onClick={() => router.push('/dashboard')} className="mt-4">Go to Dashboard</Button>
         </div>
       );
@@ -150,3 +160,4 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     </div>
   );
 }
+

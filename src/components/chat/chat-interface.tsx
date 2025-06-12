@@ -1,24 +1,24 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ChatMessage, type Message } from './chat-message';
 import { ChatInput } from './chat-input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2 } from 'lucide-react';
+import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get } from 'firebase/database';
+import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
-import type { AvatarProps } from '@radix-ui/react-avatar'; 
+
 
 interface ChatInterfaceProps {
   chatTitle: string;
-  chatType: 'global' | 'party' | 'dm' | 'ai';
+  chatType: 'global' | 'gc' | 'dm' | 'ai'; // Changed 'party' to 'gc'
   chatId?: string;
 }
 
@@ -32,7 +32,14 @@ interface UserProfileData {
   isShinyGold?: boolean;
 }
 
+interface TypingStatus {
+    isTyping: boolean;
+    timestamp: number;
+    displayName: string; 
+}
+
 const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -43,13 +50,25 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const scrollAreaViewportRef = useRef<HTMLDivElement>(null); 
   const { toast } = useToast();
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
+  const [typingUsers, setTypingUsers] = useState<{[uid: string]: TypingStatus}>({});
+
+  const typingStatusRef = useMemo(() => chatId ? ref(database, `typing_status/${chatId}`) : null, [chatId]);
+  const currentUserTypingRef = useMemo(() => (chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [chatId, currentUser]);
+
 
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
-    if (uid === 'ai-chatbot-uid') { 
-      const aiProfile: UserProfileData = { uid, username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: 'https://placehold.co/40x40.png?text=AI', nameColor: '#8B5CF6', isShinyGold: false };
-      setUsersCache(prev => ({...prev, [uid]: aiProfile}));
-      return aiProfile;
+    if (uid === 'ai-chatbot-uid' || uid === 'system') { 
+      const specialProfile: UserProfileData = { 
+          uid, 
+          username: uid === 'ai-chatbot-uid' ? 'realtalk_ai' : 'system', 
+          displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System', 
+          avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`, 
+          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a', // Purple for AI, Gray for System
+          isShinyGold: false 
+      };
+      setUsersCache(prev => ({...prev, [uid]: specialProfile}));
+      return specialProfile;
     }
     try {
       const userRef = ref(database, `users/${uid}`);
@@ -83,14 +102,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             if(profile) {
                 setCurrentUserProfile(profile);
             } else {
-                // Fallback profile if fetchUserProfile returns null (e.g., data missing in DB)
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: user.email?.split('@')[0] || "user",
                     displayName: user.displayName || "User",
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
-                    // nameColor and title will be undefined here by default
                 });
             }
         });
@@ -105,38 +122,66 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     return () => unsubscribeAuth();
   }, [fetchUserProfile, chatType]);
 
+  // Typing indicator listeners
+  useEffect(() => {
+    if (!typingStatusRef || chatType === 'ai') return;
+
+    const listener = onValue(typingStatusRef, (snapshot) => {
+        const data = snapshot.val();
+        const now = Date.now();
+        const activeTypers: {[uid: string]: TypingStatus} = {};
+        if (data) {
+            Object.entries(data).forEach(([uid, status]) => {
+                const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string}; // displayName might not be stored in typing_status
+                if (uid !== currentUser?.uid && typingInfo.isTyping && (now - typingInfo.timestamp < TYPING_TIMEOUT_MS)) {
+                    // Fetch displayName if not already in typingInfo, or use cached
+                    const userToDisplay = usersCache[uid] || { displayName: typingInfo.displayName || "Someone" };
+                    activeTypers[uid] = {...typingInfo, displayName: userToDisplay.displayName };
+                }
+            });
+        }
+        setTypingUsers(activeTypers);
+    });
+
+    return () => off(typingStatusRef, 'value', listener);
+  }, [typingStatusRef, currentUser?.uid, chatType, usersCache]);
+
+
+  // Message listeners
   useEffect(() => {
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
       if (chatId === 'ai-chatbot' && messages.length === 0) {
-        setMessages([
-          {
-            id: 'ai-welcome',
-            sender: 'RealTalk AI',
-            senderUid: 'ai-chatbot-uid',
-            senderUsername: 'realtalk_ai',
-            avatar: 'https://placehold.co/40x40.png?text=AI',
-            content: "Hello! I'm your AI Chatbot. How can I help you today?",
-            originalTimestamp: Date.now(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isOwnMessage: false,
-            senderNameColor: '#8B5CF6',
-            senderIsShinyGold: false,
-          }
-        ]);
+        fetchUserProfile('ai-chatbot-uid').then(aiProfile => {
+            setMessages([
+              {
+                id: 'ai-welcome',
+                sender: aiProfile?.displayName || 'RealTalk AI',
+                senderUid: 'ai-chatbot-uid',
+                senderUsername: aiProfile?.username || 'realtalk_ai',
+                avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
+                content: "Hello! I'm your AI Chatbot. How can I help you today?",
+                originalTimestamp: Date.now(),
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isOwnMessage: false,
+                senderNameColor: aiProfile?.nameColor || '#8B5CF6',
+                senderIsShinyGold: false,
+              }
+            ]);
+        });
       }
       return;
     }
 
-    if (!currentUser) {
+    if (!currentUser || !chatId) { // Added !chatId check
         setIsLoadingMessages(false);
         setMessages([]);
         return;
     }
 
     setIsLoadingMessages(true);
-    const chatPath = `chats/${chatId}`;
-    const messagesRefQuery = query(ref(database, chatPath), orderByChild('timestamp'), limitToLast(50));
+    const messagesPath = `chats/${chatId}/messages`; // Assuming messages are under a 'messages' child
+    const messagesRefQuery = query(ref(database, messagesPath), orderByChild('timestamp'), limitToLast(50));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
       const messageDataArray: { key: string, data: any }[] = [];
@@ -147,7 +192,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       const loadedMessagesPromises = messageDataArray.map(async (msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-        const profile = await fetchUserProfile(senderUid);
+        const profile = await fetchUserProfile(senderUid); // Will fetch 'system' or 'ai-chatbot-uid' if applicable
         
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
@@ -181,21 +226,25 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     return () => {
       off(messagesRefQuery, 'value', listener);
     };
-  }, [currentUser, chatType, chatId, toast, fetchUserProfile]);
+  }, [currentUser, chatType, chatId, toast, fetchUserProfile]); // Added chatId to dependencies
 
   useEffect(() => {
     const viewport = scrollAreaViewportRef.current;
     if (viewport) {
       setTimeout(() => {
         viewport.scrollTop = viewport.scrollHeight;
-      }, 0);
+      }, 0); // Delay slightly to allow DOM updates
     }
-  }, [messages]);
+  }, [messages, typingUsers]); // Scroll on new messages or typing indicators change
+
 
   const handleSendMessage = async (content: string) => {
     if (!currentUser || !currentUserProfile) {
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
+    }
+    if (currentUserTypingRef) {
+        remove(currentUserTypingRef); // Stop typing indicator on send
     }
 
     if (chatType === 'ai') {
@@ -219,35 +268,37 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         try {
           const aiResponsePayload: AiChatInput = { message: content };
           const aiResult: AiChatOutput = await aiChat(aiResponsePayload);
+          const aiProfile = await fetchUserProfile('ai-chatbot-uid');
 
           const aiResponseMessage: Message = {
             id: String(Date.now() + 1),
-            sender: 'RealTalk AI',
+            sender: aiProfile?.displayName || 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
-            senderUsername: 'realtalk_ai',
-            avatar: 'https://placehold.co/40x40.png?text=AI', 
+            senderUsername: aiProfile?.username || 'realtalk_ai',
+            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI', 
             content: aiResult.response,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6',
+            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
           console.error("Error calling AI chat flow or processing its response:", error);
           const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
+          const aiProfile = await fetchUserProfile('ai-chatbot-uid');
           const errorMessage: Message = {
             id: String(Date.now() + 1),
-            sender: 'RealTalk AI',
+            sender: aiProfile?.displayName || 'RealTalk AI',
             senderUid: 'ai-chatbot-uid',
-            senderUsername: 'realtalk_ai',
-            avatar: 'https://placehold.co/40x40.png?text=AI',
+            senderUsername: aiProfile?.username || 'realtalk_ai',
+            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
             content: errorMessageContent,
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: '#8B5CF6',
+            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
           };
           setMessages(prev => [...prev, errorMessage]);
@@ -262,8 +313,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         return;
     }
 
-    const chatPath = `chats/${chatId}`;
-    const messagesDbRef = ref(database, chatPath);
+    if (!chatId) { // Ensure chatId is present for non-AI chats
+        toast({ title: "Error", description: "Chat ID is missing.", variant: "destructive" });
+        return;
+    }
+    const messagesDbPath = `chats/${chatId}/messages`; // Messages are under a child node
+    const messagesDbRef = ref(database, messagesDbPath);
+
 
     const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
@@ -275,7 +331,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       senderIsShinyGold: currentUserProfile.isShinyGold || false,
     };
 
-    // Conditionally add properties to avoid 'undefined'
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
     if (currentUserProfile.nameColor) {
       newMessagePayload.senderNameColor = currentUserProfile.nameColor;
@@ -284,7 +339,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       newMessagePayload.senderTitle = currentUserProfile.title;
     }
 
-
     try {
       await push(messagesDbRef, newMessagePayload);
     } catch (error) {
@@ -292,6 +346,19 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       toast({ title: "Error", description: "Could not send message.", variant: "destructive" });
     }
   };
+
+  const typingUsersArray = useMemo(() => {
+    return Object.values(typingUsers)
+                 .filter(u => u.isTyping && (Date.now() - u.timestamp < TYPING_TIMEOUT_MS))
+                 .map(u => u.displayName);
+  }, [typingUsers]);
+
+  const typingDisplayMessage = useMemo(() => {
+    if (typingUsersArray.length === 0) return null;
+    if (typingUsersArray.length === 1) return `${typingUsersArray[0]} is typing...`;
+    if (typingUsersArray.length === 2) return `${typingUsersArray[0]} and ${typingUsersArray[1]} are typing...`;
+    return `${typingUsersArray.slice(0, 2).join(', ')}, and others are typing...`;
+  }, [typingUsersArray]);
 
   return (
     <Card className="flex flex-col h-full w-full shadow-lg rounded-lg overflow-hidden">
@@ -305,12 +372,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {chatType === 'party' && (
+            {chatType === 'gc' && ( // Changed from 'party' to 'gc'
               <>
-                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Group info clicked (UI only)"})}><Info size={16} className="mr-2" /> Group Info</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave group clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave Group</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave GC clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave GC</DropdownMenuItem>
               </>
             )}
              {chatType === 'dm' && (
@@ -363,7 +430,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 );
               })
             )}
-             {chatType === 'ai' && isAiResponding && (
+            {chatType === 'ai' && isAiResponding && (
                 <div className="flex items-center space-x-2 p-2.5">
                     <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">AI</div>
                     <div className="flex items-center space-x-1">
@@ -375,8 +442,18 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           </div>
         </ScrollArea>
       </CardContent>
+      {typingDisplayMessage && (
+        <div className="px-4 pb-1 pt-0 text-xs text-muted-foreground h-5">
+            {typingDisplayMessage}
+        </div>
+      )}
       <CardFooter className="p-0">
-        <ChatInput onSendMessage={handleSendMessage} disabled={(chatType === 'ai' && isAiResponding) || !currentUser} />
+        <ChatInput 
+            onSendMessage={handleSendMessage} 
+            disabled={(chatType === 'ai' && isAiResponding) || !currentUser}
+            chatId={chatId}
+            currentUserProfile={currentUserProfile} 
+        />
       </CardFooter>
     </Card>
   );

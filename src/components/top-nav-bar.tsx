@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck } from 'lucide-react'; // Added UserCheck
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText } from 'lucide-react'; // Added MessageSquareText
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,11 +17,11 @@ import {
   DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
-import { CreatePartyDialog } from './create-party-dialog';
+import { CreateGCDialog } from './create-gc-dialog'; // Renamed from CreatePartyDialog
 import { ThemeToggle } from '@/components/theme-toggle'; 
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
+import React, { useEffect, useState, useCallback } from 'react'; 
 import { ref, onValue, off } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -43,21 +43,20 @@ interface UserProfileData {
   nameColor?: string;
   title?: string;
   isShinyGold?: boolean;
-  username?: string; // Added for fetching profile data if needed
+  username?: string; 
 }
 
 interface AppNotification {
-  id: string; // senderUid for friend requests
+  id: string; 
   title: string;
   description: string;
   timestamp: number;
   link?: string; 
   read: boolean;
   icon?: React.ElementType; 
-  type: 'friend_request' | 'system' | 'message'; // Added type
+  type: 'friend_request' | 'system' | 'message'; 
 }
 
-// Friend request structure from friend_requests path
 interface RawFriendRequest {
     senderUsername: string;
     senderUid: string;
@@ -75,7 +74,6 @@ export function TopNavBar() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  // Store read notification IDs locally, could be persisted to localStorage or DB
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set()); 
 
 
@@ -94,7 +92,7 @@ export function TopNavBar() {
               nameColor: data.nameColor,
               title: data.title,
               isShinyGold: data.isShinyGold || false,
-              username: data.username, // Store username
+              username: data.username, 
             });
           } else {
             setUserProfileData({ displayName: user.displayName || "User", isShinyGold: false, username: user.email?.split('@')[0] });
@@ -108,10 +106,9 @@ export function TopNavBar() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Effect for listening to friend requests
   useEffect(() => {
     if (!currentUser) {
-        setNotifications([]); // Clear notifications if user logs out
+        setNotifications([]); 
         return;
     }
 
@@ -123,20 +120,18 @@ export function TopNavBar() {
             Object.entries(requestsData).forEach(([senderUid, request]) => {
                 if (request.status === 'pending') {
                     newNotifications.push({
-                        id: senderUid, // Use senderUid as ID for friend requests
+                        id: senderUid, 
                         title: 'New Friend Request',
                         description: `${request.senderUsername} wants to be your friend.`,
                         timestamp: request.timestamp,
-                        link: '/dashboard/friends?tab=friend-requests', // Link to friends page, requests tab
-                        read: readNotificationIds.has(senderUid), // Check if already read
+                        link: '/dashboard/friends?tab=friend-requests', 
+                        read: readNotificationIds.has(senderUid), 
                         icon: UserPlus,
                         type: 'friend_request',
                     });
                 }
             });
         }
-        // Combine with other notification types if any, for now just friend requests
-        // Sort by timestamp, newest first
         setNotifications(newNotifications.sort((a, b) => b.timestamp - a.timestamp));
     });
 
@@ -171,6 +166,8 @@ export function TopNavBar() {
     if (pathname.startsWith('/dashboard/chat/')) {
       if (pathname === '/dashboard/chat/global') return '/dashboard/chat/global';
       if (pathname === '/dashboard/chat/ai-chatbot') return '/dashboard/chat/ai-chatbot';
+      // For GCs or DMs, we don't have a specific nav item, so it won't match.
+      // The dashboard layout will handle the content.
     }
     const currentBase = navItems.find(item => item.href !== '/dashboard' && pathname.startsWith(item.href));
     return currentBase ? currentBase.href : '/dashboard';
@@ -178,23 +175,20 @@ export function TopNavBar() {
 
   const markNotificationAsRead = useCallback((id: string) => {
     setReadNotificationIds(prev => new Set(prev).add(id));
-    // Optionally, update notifications state to immediately reflect read status visually
-    // if not relying solely on readNotificationIds for the 'read' prop
      setNotifications(prevNots => prevNots.map(n => n.id === id ? {...n, read: true} : n));
   }, []);
   
   const clearAllNotifications = useCallback(() => {
     const idsToMarkRead = notifications.map(n => n.id);
     setReadNotificationIds(prev => new Set([...prev, ...idsToMarkRead]));
-    setNotifications(prevNots => prevNots.map(n => ({...n, read: true}))); // Visually mark all as read
-    // For friend requests, they are cleared when handled (accepted/declined) from the DB listener.
-    // If other notification types are added that persist, they'd need DB removal here.
+    setNotifications(prevNots => prevNots.map(n => ({...n, read: true}))); 
     toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
   }, [notifications]);
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
-  const userDisplayNameStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'});
-  const userTitleStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--foreground))'});
+  const userDisplayNameFinalStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : {});
+  const userTitleFinalStyle = userProfileData?.isShinyGold ? {} : (userProfileData?.nameColor ? { color: userProfileData.nameColor } : { color: 'hsl(var(--muted-foreground))'});
+
 
   return (
     <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground transition-colors duration-200">
@@ -218,11 +212,11 @@ export function TopNavBar() {
                 {item.label}
               </Link>
             ))}
-            <CreatePartyDialog>
+            <CreateGCDialog>
               <Button variant="ghost" className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:text-primary" onClick={() => setIsMobileMenuOpen(false)}>
-                <PlusCircle className="h-5 w-5" /> Create Party
+                <MessageSquareText className="h-5 w-5" /> Create GC
               </Button>
-            </CreatePartyDialog>
+            </CreateGCDialog>
           </nav>
         </SheetContent>
       </Sheet>
@@ -244,11 +238,11 @@ export function TopNavBar() {
                 </Link>
               </TabsTrigger>
             ))}
-             <CreatePartyDialog>
+             <CreateGCDialog>
                 <Button variant="ghost" size="sm" className="ml-2 flex items-center gap-1.5 text-muted-foreground hover:text-primary">
-                    <PlusCircle className="h-4 w-4" /> Create Party
+                    <MessageSquareText className="h-4 w-4" /> Create GC
                 </Button>
-            </CreatePartyDialog>
+            </CreateGCDialog>
           </TabsList>
         </Tabs>
       </nav>
@@ -257,7 +251,6 @@ export function TopNavBar() {
         <ThemeToggle /> 
         
         <DropdownMenu onOpenChange={(open) => {
-            // Mark all as read when dropdown opens, if any are unread
             if (open && unreadNotificationsCount > 0) {
                  notifications.filter(n => !n.read).forEach(n => markNotificationAsRead(n.id));
             }
@@ -328,11 +321,11 @@ export function TopNavBar() {
               <>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className={cn("text-sm font-medium leading-none", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameStyle}>
+                    <p className={cn("text-sm font-medium leading-none", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userDisplayNameFinalStyle}>
                       {userProfileData.displayName}
                     </p>
                     {userProfileData.title && (
-                      <p className={cn("text-xs leading-none italic", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleStyle}>
+                      <p className={cn("text-xs leading-none italic", userProfileData.isShinyGold ? 'text-shiny-gold' : '')} style={userTitleFinalStyle}>
                         {userProfileData.title}
                       </p>
                     )}

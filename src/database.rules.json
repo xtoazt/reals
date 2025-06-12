@@ -29,20 +29,46 @@
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || (!$chatId.contains('dm_') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
-        ".write": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || (!$chatId.contains('dm_') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
+        ".read": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.startsWith('gc-') && (newData.parent().child('members/' + auth.uid).exists() || data.child('members/' + auth.uid).exists() ) ) || (!$chatId.contains('dm_') && !$chatId.startsWith('gc-') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
+        ".write": "auth != null && ( ($chatId.contains('dm_') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.startsWith('gc-') && (newData.parent().child('members/' + auth.uid).exists() || data.child('members/' + auth.uid).exists() ) ) || (!$chatId.contains('dm_') && !$chatId.startsWith('gc-') && $chatId !== 'global' && $chatId !== 'ai-chatbot') )",
+        // GC specific data like gcName, createdBy, members
+        "gcName": { ".validate": "$chatId.startsWith('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "createdBy": { ".validate": "$chatId.startsWith('gc-') && newData.isString() && newData.val() === auth.uid" },
+        "createdAt": { ".validate": "$chatId.startsWith('gc-') && newData.isNumber() && newData.val() === now" },
+        "members": {
+          "$uid": {
+            ".validate": "$chatId.startsWith('gc-') && newData.isBoolean() && newData.val() === true"
+          }
+        },
+        // Messages can be under a 'messages' child node
+        "messages": {
+            "$messageId": {
+              ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
+              "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid || newData.val() === 'system'" },
+              "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+              "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+              "senderAvatar": { ".validate": "newData.isString()" },
+              "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
+              "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+              "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+              "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
+              "timestamp": { ".validate": "newData.val() === now" },
+              "$other": { ".validate": false }
+            }
+        },
+        // Legacy: if messages are directly under $chatId (not recommended for GCs)
         "$messageId": {
-          ".validate": "newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
-          "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
-          "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
-          "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
-          "senderAvatar": { ".validate": "newData.isString()" },
-          "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
-          "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
-          "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
-          "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
-          "timestamp": { ".validate": "newData.val() === now" },
-          "$other": { ".validate": false }
+            ".validate": "!$chatId.startsWith('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now",
+            "senderUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+            "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+            "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+            "senderAvatar": { ".validate": "newData.isString()" },
+            "senderNameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
+            "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
+            "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
+            "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
+            "timestamp": { ".validate": "newData.val() === now" },
+            "$other": { ".validate": "!$chatId.startsWith('gc-') && false" } // Allow other fields only if not a GC
         }
       }
     },
@@ -95,6 +121,16 @@
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.hasChildren(['isOnline', 'lastChanged']) && newData.child('isOnline').isBoolean() && newData.child('lastChanged').isNumber()"
+      }
+    },
+    "typing_status": {
+      "$chatId": {
+        ".read": "auth != null", // Any authenticated user can read typing indicators. Client logic should filter.
+        "$userId": {
+          ".write": "auth != null && auth.uid === $userId",
+          // Validates data when starting to type. Allows removal for stopping.
+          ".validate": "!newData.exists() || (newData.hasChildren(['isTyping', 'timestamp', 'displayName']) && newData.child('isTyping').val() === true && newData.child('timestamp').isNumber() && newData.child('displayName').isString())"
+        }
       }
     }
   }

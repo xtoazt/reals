@@ -18,12 +18,12 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Users, PlusCircle, Loader2, MessageSquareText } from 'lucide-react'; // Changed Users to MessageSquareText
+import { Users, PlusCircle, Loader2, MessageSquareText } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, get, off, serverTimestamp, set } from 'firebase/database'; // Added set and serverTimestamp
+import { ref, onValue, get, off, serverTimestamp, set, push } from 'firebase/database'; 
 
 interface Friend {
   id: string; 
@@ -41,13 +41,13 @@ interface UserProfileData {
     nameColor?: string;
 }
 
-interface CreateGCDialogProps { // Renamed from CreatePartyDialogProps
+interface CreateGCDialogProps { 
   children?: React.ReactNode; 
 }
 
-export function CreateGCDialog({ children }: CreateGCDialogProps) { // Renamed from CreatePartyDialog
+export function CreateGCDialog({ children }: CreateGCDialogProps) { 
   const [isOpen, setIsOpen] = useState(false);
-  const [gcName, setGCName] = useState(''); // Renamed from partyName
+  const [gcName, setGCName] = useState(''); 
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const { toast } = useToast();
   const router = useRouter();
@@ -164,17 +164,11 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) { // Renamed f
       toast({ title: 'Error', description: 'Group Chat name cannot be empty.', variant: 'destructive' });
       return;
     }
-    // Allowing GCs with only the creator for now, can adjust later if min members are needed
-    // if (selectedFriends.length === 0) {
-    //   toast({ title: 'Error', description: 'Please select at least one friend to invite.', variant: 'destructive' });
-    //   return;
-    // }
 
     setIsCreatingGC(true);
     const newGCId = `gc-${gcName.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}-${Date.now()}`;
     
     try {
-      // Basic structure for a GC - can be expanded later
       const gcChatRef = ref(database, `chats/${newGCId}`);
       const initialMessageContent = `${currentUserProfile.displayName} created the Group Chat: "${gcName}"`;
       
@@ -186,20 +180,19 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) { // Renamed f
         gcName: gcName,
         createdBy: currentUser.uid,
         createdAt: serverTimestamp(),
-        members: members, // Store members
-        // You might want a 'type: gc' field for easier querying/rules if needed
+        members: members, 
       });
 
-      // Send an initial message to the new GC
-      const messagesRef = ref(database, `chats/${newGCId}/messages`); // Assuming messages are stored under a 'messages' child
+      const messagesRef = ref(database, `chats/${newGCId}/messages`); 
       const initialMessage = {
-          senderUid: 'system', // Or currentUser.uid if preferred
+          senderUid: 'system', 
           senderName: 'System',
           senderUsername: 'system',
+          avatar: `https://placehold.co/40x40.png?text=SYS`,
           content: initialMessageContent,
           timestamp: serverTimestamp(),
       };
-      await set(push(messagesRef), initialMessage);
+      await push(messagesRef, initialMessage); // Use push to generate unique ID for message
 
 
       toast({
@@ -306,3 +299,4 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) { // Renamed f
     </Dialog>
   );
 }
+
