@@ -8,7 +8,7 @@
         ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio']) && newData.child('username').isString() && newData.child('username').val().length >= 3 && newData.child('username').val().length <= 30 && newData.child('username').val().matches(/^[a-zA-Z0-9_]+$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 3 && newData.child('displayName').val().length <= 30 && newData.child('displayName').val().matches(/^[a-zA-Z0-9_]+$/) ",
         "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
         "username": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
-        "displayName": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_.]+(?: [a-zA-Z0-9_.]+)*$/) && newData.child('username').val() === newData.child('displayName').val()" },
+        "displayName": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
         "email": { ".validate": "newData.isString() && newData.val().length > 0" },
         "avatar": { ".validate": "newData.isString()" },
         "banner": { ".validate": "newData.isString()" },
@@ -32,7 +32,7 @@
     "chats": {
       "$chatId": {
         ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && data.child('members').child(auth.uid).exists()) )",
-        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.parent().child($chatId).child('members').child(auth.uid).exists()) )) )",
+        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
         
         "gcName": { ".validate": "$chatId.contains('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
@@ -127,7 +127,7 @@
     },
     "typing_status": {
       "$chatId": {
-        ".read": "auth != null", 
+        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
         "$userId": {
           ".write": "auth != null && auth.uid === $userId",
           ".validate": "!newData.exists() || (newData.hasChildren(['isTyping', 'timestamp', 'displayName']) && newData.child('isTyping').val() === true && newData.child('timestamp').isNumber() && newData.child('displayName').isString())"
