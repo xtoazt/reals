@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, get, off, serverTimestamp, set, push } from 'firebase/database';
+import { ref, get, serverTimestamp, set, push } from 'firebase/database'; // Added 'get' and 'push'
 
 interface Friend {
   id: string;
@@ -41,11 +41,6 @@ interface UserProfileData {
   nameColor?: string;
 }
 
-type UserCacheEntry = UserProfileData | null;
-interface UsersCache {
-  [uid: string]: UserCacheEntry;
-}
-
 interface CreateGCDialogProps {
   children?: React.ReactNode;
 }
@@ -60,11 +55,8 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   
-  const [friendUIDs, setFriendUIDs] = useState<string[]>([]);
-  const [usersCache, setUsersCache] = useState<UsersCache>({});
-  const [friendsList, setFriendsList] = useState<Friend[]>([]);
-
-  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
 
   useEffect(() => {
@@ -84,6 +76,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           }
         }).catch(error => {
           console.error("Error fetching current user profile for GC dialog:", error);
+          // Set a fallback profile
           setCurrentUserProfile({
             uid: user.uid,
             username: user.email?.split('@')[0] || "User",
@@ -97,134 +90,89 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
-  // Effect 1: Manage Firebase Listener for Friend UIDs & Clean up on Close/User Change
   useEffect(() => {
-    if (!currentUser || !isOpen) {
-      setFriendUIDs([]);
-      setUsersCache({}); // Clear cache
-      setFriendsList([]); // Clear derived list
-      setIsLoadingFriends(false); // Reset loading state
+    if (!isOpen || !currentUser) {
+      setFriendsToDisplay([]);
+      setIsLoadingData(false); // Reset loading state if dialog is closed or no user
       return;
     }
 
-    // Set initial loading state when we intend to fetch UIDs
-    setIsLoadingFriends(true); 
-    const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
-    const listener = onValue(friendsDbRef, (snapshot) => {
-      const friendsData = snapshot.val();
-      const uids = friendsData ? Object.keys(friendsData) : [];
-      setFriendUIDs(uids);
-      
-      // If no UIDs are found, we are done loading.
-      // If UIDs are found, Effect 2 & 3 will handle profile fetching and subsequent loading states.
-      if (uids.length === 0) {
-        setIsLoadingFriends(false);
-        setFriendsList([]); // Ensure list is empty if no UIDs
-      }
-      // Note: We don't set isLoadingFriends to false here if uids.length > 0,
-      // as profile fetching (Effect 2 & 3) will manage that.
-    }, (error) => {
-      console.error("Error fetching friend UIDs:", error);
-      toast({ title: "Error", description: "Could not load friend UIDs.", variant: "destructive" });
-      setFriendUIDs([]);
-      setUsersCache({});
-      setFriendsList([]);
-      setIsLoadingFriends(false);
-    });
+    const loadFriendsData = async () => {
+      setIsLoadingData(true);
+      try {
+        const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
+        const friendsSnapshot = await get(friendsDbRef); // Use get() for one-time fetch
+        const friendsData = friendsSnapshot.val();
 
-    return () => {
-      off(friendsDbRef, 'value', listener);
-    };
-  }, [currentUser, isOpen, toast]);
-
-  // Memoized function to fetch and cache a single user profile
-  const fetchAndCacheUserProfile = useCallback(async (uid: string) => {
-    try {
-      const userRef = ref(database, `users/${uid}`);
-      const snapshot = await get(userRef);
-      let profile: UserProfileData | null = null;
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        profile = {
-          uid,
-          username: userData.username || "unknown_user",
-          displayName: userData.displayName || userData.username || "Unknown User",
-          avatar: userData.avatar,
-          nameColor: userData.nameColor,
-        };
-      }
-      setUsersCache(prevCache => ({ ...prevCache, [uid]: profile }));
-    } catch (error) {
-      console.error(`Error fetching user profile for UID ${uid}:`, error);
-      setUsersCache(prevCache => ({ ...prevCache, [uid]: null }));
-    }
-  }, [setUsersCache]);
-
-  // Effect 2: Initiate fetches for profiles not yet in cache
-  useEffect(() => {
-    if (!isOpen || !currentUser || friendUIDs.length === 0) {
-      // If no UIDs, or dialog closed, no profiles to fetch.
-      // isLoadingFriends should already be false from Effect 1 if friendUIDs is empty.
-      return;
-    }
-
-    const uidsToFetch = friendUIDs.filter(uid => usersCache[uid] === undefined);
-
-    if (uidsToFetch.length > 0) {
-      // If we are about to fetch, ensure loading is true.
-      // This is important if Effect 1 found UIDs but this effect runs before Effect 3 sets loading based on cache.
-      if (!isLoadingFriends) setIsLoadingFriends(true); 
-      uidsToFetch.forEach(uid => fetchAndCacheUserProfile(uid));
-    }
-    // This effect does NOT set isLoadingFriends to false. Effect 3 does.
-  }, [isOpen, currentUser, friendUIDs, fetchAndCacheUserProfile, usersCache, isLoadingFriends]); // Added usersCache and isLoadingFriends to re-evaluate if necessary
-
-
-  // Effect 3: Derive friendsList and set final isLoadingFriends based on usersCache
-  useEffect(() => {
-    if (!isOpen) {
-      // Cleanup handled by Effect 1 when isOpen becomes false
-      return;
-    }
-
-    const newFriendsList = friendUIDs
-      .map(uid => {
-        const profile = usersCache[uid];
-        if (profile) { // profile is UserProfileData (truthy)
-          return {
-            id: uid,
-            username: profile.username,
-            displayName: profile.displayName,
-            avatar: profile.avatar,
-            nameColor: profile.nameColor,
-          };
+        if (!friendsData) {
+          setFriendsToDisplay([]);
+          setIsLoadingData(false);
+          return;
         }
-        return null; // profile is null (fetch failed/not found) or undefined (not yet fetched)
-      })
-      .filter((f): f is Friend => f !== null);
-    setFriendsList(newFriendsList);
 
-    if (friendUIDs.length > 0) {
-      const allProfilesAttempted = friendUIDs.every(uid => usersCache[uid] !== undefined);
-      if (allProfilesAttempted) {
-        setIsLoadingFriends(false); // All UIDs have an entry (data or null) in cache
-      } else {
-        setIsLoadingFriends(true); // Still waiting for some profiles
+        const friendUIDs = Object.keys(friendsData);
+        if (friendUIDs.length === 0) {
+          setFriendsToDisplay([]);
+          setIsLoadingData(false);
+          return;
+        }
+
+        const profilePromises = friendUIDs.map(async (uid) => {
+          try {
+            const userRefPath = `users/${uid}`;
+            const profileSnapshot = await get(ref(database, userRefPath));
+            if (profileSnapshot.exists()) {
+              const userData = profileSnapshot.val();
+              return {
+                id: uid,
+                username: userData.username || "unknown_user",
+                displayName: userData.displayName || userData.username || "Unknown User", // Ensure displayName has a fallback
+                avatar: userData.avatar,
+                nameColor: userData.nameColor,
+              } as Friend;
+            }
+            return null; // User profile might not exist
+          } catch (profileError) {
+            console.error(`Error fetching profile for UID ${uid}:`, profileError);
+            return null; // Treat error as profile not found for this item
+          }
+        });
+
+        // Wait for all profile fetches to settle
+        const profilesResults = await Promise.allSettled(profilePromises);
+        
+        const fetchedFriends: Friend[] = [];
+        profilesResults.forEach(result => {
+          // Add to list only if fetch was successful and profile data is not null
+          if (result.status === 'fulfilled' && result.value) {
+            fetchedFriends.push(result.value);
+          }
+        });
+        setFriendsToDisplay(fetchedFriends);
+
+      } catch (error) {
+        console.error("Error loading friends data for GC dialog:", error);
+        toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
+        setFriendsToDisplay([]); // Clear list on error
+      } finally {
+        setIsLoadingData(false); // Ensure loading is set to false in all cases
       }
-    } else {
-      // If friendUIDs is empty, isLoadingFriends should already be false (set by Effect 1).
-      // This is a safeguard.
-      setIsLoadingFriends(false);
-    }
-  }, [isOpen, friendUIDs, usersCache]);
+    };
+
+    loadFriendsData();
+
+    // No cleanup function needed for get(), but if there were other listeners, they'd go here.
+  }, [isOpen, currentUser, toast]);
 
 
-  // Effect 4: Reset form fields when dialog closes
   useEffect(() => {
+    // Reset form fields when dialog closes
     if (!isOpen) {
       setGCName('');
       setSelectedFriends([]);
       setIsCreatingGC(false);
+      // setFriendsToDisplay([]); // Optionally clear display list, or let it persist for quick reopen
+      // setIsLoadingData(false); // This is handled by the main data loading effect
     }
   }, [isOpen]);
 
@@ -270,7 +218,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         senderUid: 'system',
         senderName: 'System',
         senderUsername: 'system',
-        avatar: `https://placehold.co/40x40.png?text=SYS`,
+        avatar: `https://placehold.co/40x40.png?text=SYS`, // Placeholder for system messages
         content: initialMessageContent,
         timestamp: serverTimestamp(),
       };
@@ -329,13 +277,13 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
             <div className="space-y-2">
               <Label>Invite Friends ({selectedFriends.length} selected)</Label>
               <ScrollArea className="h-[200px] w-full rounded-md border">
-                {isLoadingFriends ? (
+                {isLoadingData ? (
                   <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
-                ) : friendsList.length > 0 ? (
+                ) : friendsToDisplay.length > 0 ? (
                   <div className="p-2 space-y-1">
-                    {friendsList.map((friend) => (
+                    {friendsToDisplay.map((friend) => (
                       <div
                         key={friend.id}
                         className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted has-[button:focus-visible]:bg-muted has-[:checked]:bg-primary/10"
@@ -362,7 +310,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground p-4 text-center">
-                    {(currentUser && friendUIDs.length === 0 && !isLoadingFriends) ? "You have no friends to invite yet." : "Could not load friends list or no friends found."}
+                    {(currentUser && friendsToDisplay.length === 0 && !isLoadingData) ? "You have no friends to invite yet." : "No friends to display or an error occurred."}
                   </p>
                 )}
               </ScrollArea>
@@ -372,7 +320,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={isCreatingGC}>Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={!gcName.trim() || isLoadingFriends || isCreatingGC}>
+            <Button type="submit" disabled={!gcName.trim() || isLoadingData || isCreatingGC}>
               {isCreatingGC ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create GC
             </Button>
@@ -382,4 +330,3 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     </Dialog>
   );
 }
-
