@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff } from "lucide-react";
+import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff, Circle } from "lucide-react"; // Added Circle
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 interface FriendRequest {
-  id: string; // sender's UID
+  id: string; 
   senderUsername: string;
   senderAvatar?: string;
   senderNameColor?: string;
@@ -26,13 +26,14 @@ interface FriendRequest {
 }
 
 interface Friend {
-  id: string; // friend's UID
+  id: string; 
   username: string;
   displayName: string;
   avatar?: string;
   nameColor?: string;
   isShinyGold?: boolean;
-  status?: string; 
+  isOnline?: boolean; 
+  lastChanged?: number;
 }
 
 interface UserProfileData {
@@ -43,6 +44,11 @@ interface UserProfileData {
     nameColor?: string;
     isShinyGold?: boolean;
     friendsCount?: number;
+}
+
+interface PresenceData {
+    isOnline: boolean;
+    lastChanged: number;
 }
 
 export default function FriendsPage() {
@@ -61,6 +67,8 @@ export default function FriendsPage() {
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
 
   const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
+  const [presenceListeners, setPresenceListeners] = useState<{[uid: string]: () => void}>({});
+
 
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
     if (usersCache[uid]) return usersCache[uid];
@@ -97,10 +105,18 @@ export default function FriendsPage() {
         setFriends([]);
         setIsLoadingRequests(false);
         setIsLoadingFriends(false);
+        // Clean up all presence listeners when user logs out
+        Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
+        setPresenceListeners({});
       }
     });
-    return () => unsubscribeAuth();
-  }, [fetchUserProfile]);
+    return () => {
+      unsubscribeAuth();
+      // Clean up all presence listeners on component unmount
+      Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
+      setPresenceListeners({});
+    };
+  }, [fetchUserProfile, presenceListeners]); // Added presenceListeners to dependency array
 
   useEffect(() => {
     if (!currentUser) return;
@@ -139,27 +155,59 @@ export default function FriendsPage() {
   useEffect(() => {
     if (!currentUser) return;
     setIsLoadingFriends(true);
-    const friendsRef = ref(database, `friends/${currentUser.uid}`);
-    const listener = onValue(friendsRef, async (snapshot) => {
+    const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
+
+    const newPresenceListeners: { [uid: string]: () => void } = {};
+
+    const friendsListener = onValue(friendsDbRef, async (snapshot) => {
       const friendsData = snapshot.val();
+      // Clean up old presence listeners not relevant anymore
+      Object.keys(presenceListeners).forEach(uid => {
+        if (!friendsData || !friendsData[uid]) {
+          presenceListeners[uid](); // Unsubscribe
+          delete presenceListeners[uid];
+        }
+      });
+      setPresenceListeners(prev => ({...prev})); // Update state
+
       if (friendsData) {
-        const loadedFriends: Friend[] = [];
         const friendUIDs = Object.keys(friendsData);
-        for (const friendUid of friendUIDs) {
+        const loadedFriendsPromises = friendUIDs.map(async (friendUid) => {
           const profile = await fetchUserProfile(friendUid);
           if (profile) {
-            loadedFriends.push({
+            return {
               id: friendUid,
               username: profile.username,
               displayName: profile.displayName,
               avatar: profile.avatar,
               nameColor: profile.nameColor,
               isShinyGold: profile.isShinyGold || false,
-              status: Math.random() > 0.5 ? 'Online' : 'Offline', 
-            });
+              isOnline: false, // Default to offline initially
+            };
           }
-        }
-        setFriends(loadedFriends);
+          return null;
+        });
+
+        let resolvedFriends = (await Promise.all(loadedFriendsPromises)).filter(f => f !== null) as Friend[];
+        setFriends(resolvedFriends);
+
+        // Set up new presence listeners
+        resolvedFriends.forEach(friend => {
+          if (!presenceListeners[friend.id] && !newPresenceListeners[friend.id]) {
+            const presenceRef = ref(database, `/presence/${friend.id}`);
+            const listener = onValue(presenceRef, (presenceSnap) => {
+              const presenceData = presenceSnap.val() as PresenceData | null;
+              setFriends(prevFriends => prevFriends.map(f => 
+                f.id === friend.id 
+                  ? { ...f, isOnline: presenceData?.isOnline || false, lastChanged: presenceData?.lastChanged } 
+                  : f
+              ));
+            });
+            newPresenceListeners[friend.id] = () => off(presenceRef, 'value', listener);
+          }
+        });
+        setPresenceListeners(prev => ({...prev, ...newPresenceListeners}));
+
       } else {
         setFriends([]);
       }
@@ -169,8 +217,13 @@ export default function FriendsPage() {
         toast({title: "Error", description: "Could not load friends list.", variant: "destructive"});
         setIsLoadingFriends(false);
     });
-    return () => off(friendsRef, 'value', listener);
-  }, [currentUser, fetchUserProfile, toast]);
+
+    return () => {
+      off(friendsDbRef, 'value', friendsListener);
+      Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe()); // Clean up listeners from this effect run
+    };
+  }, [currentUser, fetchUserProfile, toast]); // Removed presenceListeners from here, managed internally
+
 
   const generateDmChatId = (uid1: string, uid2: string): string => {
     const ids = [uid1, uid2].sort();
@@ -349,8 +402,8 @@ export default function FriendsPage() {
         if (wereFriends) {
             const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
             const targetUserFriendsCountRef = ref(database, `users/${friendUid}/friendsCount`);
-            await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
-            await runTransaction(targetUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+            await runTransaction(currentUserFriendsCountRef, (currentCount) => Math.max(0, (currentCount || 0) - 1));
+            await runTransaction(targetUserFriendsCountRef, (currentCount) => Math.max(0, (currentCount || 0) - 1));
         }
 
         toast({ title: "User Blocked", description: `You have blocked ${friendUsername}. They have been removed from your friends list.` });
@@ -360,25 +413,6 @@ export default function FriendsPage() {
     }
   };
   
-  const handleUnblockUser = async (userToUnblockUid: string, userToUnblockUsername: string) => {
-    if (!currentUser || !currentUserProfile) return;
-    toast({
-        title: `Unblocking ${userToUnblockUsername}`,
-        description: "You will be able to send/receive friend requests with them again.",
-    });
-    try {
-        const updates: { [key: string]: any } = {};
-        updates[`/blocked_users/${currentUser.uid}/${userToUnblockUid}`] = null;
-        updates[`/users_blocked_by/${userToUnblockUid}/${currentUser.uid}`] = null;
-        
-        await update(ref(database), updates);
-        toast({ title: "User Unblocked", description: `You have unblocked ${userToUnblockUsername}.` });
-    } catch (error: any) {
-        console.error("Error unblocking user:", error);
-        toast({ title: "Error", description: `Could not unblock user: ${error.message}`, variant: "destructive" });
-    }
-  };
-
   const handleViewProfile = (username: string) => {
     router.push(`/dashboard/profile/${username}`);
   };
@@ -386,10 +420,10 @@ export default function FriendsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="transition-shadow hover:shadow-md">
         <CardHeader>
           <CardTitle className="font-headline">Manage Friends</CardTitle>
-          <CardDescription>connect fr</CardDescription>
+          <CardDescription>Connect with others on real.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
@@ -400,7 +434,7 @@ export default function FriendsPage() {
               onChange={(e) => setFriendUsernameToAdd(e.target.value)}
               disabled={isLoadingAddFriend || !currentUser}
             />
-            <Button onClick={handleAddFriend} disabled={isLoadingAddFriend || !currentUser || !friendUsernameToAdd.trim()}>
+            <Button onClick={handleAddFriend} disabled={isLoadingAddFriend || !currentUser || !friendUsernameToAdd.trim()} className="transition-colors">
               {isLoadingAddFriend ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
               Add Friend
             </Button>
@@ -419,7 +453,7 @@ export default function FriendsPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="all-friends">
-          <Card>
+          <Card className="transition-shadow hover:shadow-md">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Your Friends ({friends.length})</CardTitle>
@@ -434,11 +468,15 @@ export default function FriendsPage() {
                 <p className="col-span-full text-muted-foreground text-center py-4">You haven't added any friends yet.</p>
               ) : (
                 friends.map(friend => (
-                  <Card key={friend.id} className="p-4 flex flex-col space-y-3 shadow-sm">
+                  <Card key={friend.id} className="p-4 flex flex-col space-y-3 shadow-sm transition-all duration-150 ease-in-out hover:shadow-lg">
                     <div className="flex items-center space-x-4">
-                        <Avatar className="h-12 w-12 cursor-pointer" onClick={() => handleViewProfile(friend.username)}>
+                        <Avatar className="h-12 w-12 cursor-pointer relative" onClick={() => handleViewProfile(friend.username)}>
                         <AvatarImage src={friend.avatar} alt={friend.displayName} data-ai-hint="profile avatar" />
                         <AvatarFallback>{friend.displayName.charAt(0)}</AvatarFallback>
+                        <Circle className={cn(
+                            "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-background",
+                            friend.isOnline ? "fill-green-500 stroke-green-600" : "fill-gray-400 stroke-gray-500"
+                         )} />
                         </Avatar>
                         <div className="flex-1">
                         <p 
@@ -449,20 +487,20 @@ export default function FriendsPage() {
                             {friend.displayName}
                         </p>
                         <p className="text-xs text-muted-foreground">@{friend.username}</p>
-                        <p className={`text-xs ${friend.status === 'Online' ? 'text-green-500' : 'text-muted-foreground'}`}>{friend.status}</p>
+                        <p className={`text-xs ${friend.isOnline ? 'text-green-500' : 'text-muted-foreground'}`}>{friend.isOnline ? 'Online' : 'Offline'}</p>
                         </div>
                     </div>
-                    <div className="flex gap-2 w-full">
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => handleViewProfile(friend.username)}>
+                    <div className="flex gap-2 w-full pt-2">
+                        <Button variant="outline" size="sm" className="flex-1 transition-colors" onClick={() => handleViewProfile(friend.username)}>
                             <Users className="mr-2 h-3 w-3"/> Profile
                         </Button>
                         <Link href={`/dashboard/chat/${currentUser ? generateDmChatId(currentUser.uid, friend.id) : '#'}`} passHref className="flex-1">
-                             <Button variant="default" size="sm" className="w-full" disabled={!currentUser}>
+                             <Button variant="default" size="sm" className="w-full transition-colors" disabled={!currentUser}>
                                 <MessageSquare className="mr-2 h-3 w-3"/> Chat
                             </Button>
                         </Link>
                     </div>
-                     <Button variant="destructive" size="sm" className="w-full justify-center" onClick={() => handleBlockUser(friend.id, friend.username)}>
+                     <Button variant="destructive" size="sm" className="w-full justify-center transition-colors" onClick={() => handleBlockUser(friend.id, friend.username)}>
                         <UserX className="mr-1 h-4 w-4" /> Block & Remove
                     </Button>
                   </Card>
@@ -472,7 +510,7 @@ export default function FriendsPage() {
           </Card>
         </TabsContent>
         <TabsContent value="friend-requests">
-          <Card>
+          <Card className="transition-shadow hover:shadow-md">
             <CardHeader><CardTitle>Incoming Requests ({friendRequests.length})</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {isLoadingRequests ? (
@@ -483,7 +521,7 @@ export default function FriendsPage() {
                 <p className="text-muted-foreground">No new friend requests.</p>
               ) : (
                 friendRequests.map(request => (
-                  <Card key={request.id} className="p-4 flex items-center justify-between shadow-sm">
+                  <Card key={request.id} className="p-4 flex items-center justify-between shadow-sm transition-shadow hover:shadow-md">
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10 cursor-pointer" onClick={() => handleViewProfile(request.senderUsername)}>
                         <AvatarImage src={request.senderAvatar} alt={request.senderUsername} data-ai-hint="profile avatar" />
@@ -501,8 +539,8 @@ export default function FriendsPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700 hover:bg-green-100" onClick={() => handleAcceptRequest(request.id, request.senderUsername)}><UserCheck className="mr-1 h-4 w-4" /> Accept</Button>
-                      <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-100" onClick={() => handleDeclineRequest(request.id)}><UserX className="mr-1 h-4 w-4" /> Decline</Button>
+                      <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700 hover:bg-green-100 transition-colors" onClick={() => handleAcceptRequest(request.id, request.senderUsername)}><UserCheck className="mr-1 h-4 w-4" /> Accept</Button>
+                      <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors" onClick={() => handleDeclineRequest(request.id)}><UserX className="mr-1 h-4 w-4" /> Decline</Button>
                     </div>
                   </Card>
                 ))
