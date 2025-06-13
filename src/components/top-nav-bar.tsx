@@ -123,7 +123,7 @@ export function TopNavBar() {
   
   useEffect(() => {
     if (!currentUser) {
-      setRawFriendRequestsData(null); // Clear raw data if user logs out
+      setRawFriendRequestsData(null); 
       return;
     }
 
@@ -131,40 +131,37 @@ export function TopNavBar() {
     const friendRequestsRefHandle = ref(database, friendRequestsRefPath);
     
     const listener = onValue(friendRequestsRefHandle, (snapshot) => {
-      setRawFriendRequestsData(snapshot.val()); // Update raw data state
+      setRawFriendRequestsData(snapshot.val()); 
     }, (error) => {
       console.error("Error fetching friend requests for notifications:", error);
-      setRawFriendRequestsData(null); // Clear on error
+      setRawFriendRequestsData(null); 
     });
 
     return () => off(friendRequestsRefHandle, 'value', listener);
-  }, [currentUser]); // Only re-subscribe if currentUser changes
+  }, [currentUser]); 
 
   
-  // Effect to process rawFriendRequestsData and readNotificationIds into notifications
   useEffect(() => {
     const newProcessedNotifications: AppNotification[] = [];
     if (rawFriendRequestsData) {
       Object.entries(rawFriendRequestsData).forEach(([senderUid, request]) => {
         if (request.status === 'pending') {
           newProcessedNotifications.push({
-            id: senderUid, // Use senderUid as a unique ID for the notification
+            id: senderUid, 
             title: 'New Friend Request',
             description: `${request.senderUsername} wants to be your friend.`,
             timestamp: request.timestamp,
-            link: '/dashboard/friends?tab=friend-requests', // Direct link to the requests tab
-            read: readNotificationIds.has(senderUid), // Check if this request's ID is in the read set
+            link: '/dashboard/friends?tab=friend-requests', 
+            read: readNotificationIds.has(senderUid), 
             icon: UserPlus,
             type: 'friend_request',
           });
         }
       });
     }
-    // Add other notification types here if needed, e.g., system messages, new DM messages
     
-    // Sort notifications, typically newest first
     setNotifications(newProcessedNotifications.sort((a, b) => b.timestamp - a.timestamp));
-  }, [rawFriendRequestsData, readNotificationIds]); // Re-process when raw data or read IDs change
+  }, [rawFriendRequestsData, readNotificationIds]); 
 
 
   const handleLogout = async () => {
@@ -194,9 +191,7 @@ export function TopNavBar() {
     if (pathname.startsWith('/dashboard/chat/')) {
       if (pathname === '/dashboard/chat/global') return '/dashboard/chat/global';
       if (pathname === '/dashboard/chat/ai-chatbot') return '/dashboard/chat/ai-chatbot';
-      // Could add logic here for other specific chat/* routes if needed
     }
-    // Fallback for nested routes like /dashboard/profile/* or /dashboard/settings/*
     const currentBase = navItems.find(item => item.href !== '/dashboard' && pathname.startsWith(item.href));
     return currentBase ? currentBase.href : '/dashboard';
   };
@@ -214,20 +209,18 @@ export function TopNavBar() {
         }
       });
     }
-    // Add logic here if there are other types of notifications to clear
 
     if (idsToMarkReadFromRaw.size > 0) {
       setReadNotificationIds(prev => new Set([...prev, ...idsToMarkReadFromRaw]));
       toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
     } else {
-       // Check if there were any notifications to begin with before showing "already read"
-       if(notifications.length === 0) { // Check the derived notifications list
+       if(notifications.length === 0) { 
          toast({title: "No Notifications", description: "No pending notifications to clear."});
        } else {
          toast({title: "Notifications Already Read", description: "All notifications were already marked as read."});
        }
     }
-  }, [rawFriendRequestsData, notifications, toast]); // Added notifications to dependency
+  }, [rawFriendRequestsData, notifications, toast]); 
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
@@ -287,9 +280,9 @@ export function TopNavBar() {
 
       <Link href="/dashboard" className="flex items-center gap-2">
          <svg width="28" height="28" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-            <path d="M18 0L12 9L18 18L24 9L18 0Z" fill="currentColor"/>
-            <path d="M9 12L0 18L9 24L18 18L9 12Z" fill="currentColor"/>
-            <path d="M27 12L18 18L27 24L36 18L27 12Z" fill="currentColor"/>
+            <path d="M18 0L9.5 12L18 24L26.5 12L18 0Z" fill="currentColor"/>
+            <path d="M18 9L12.5 16L18 23L23.5 16L18 9Z" opacity="0.7" fill="currentColor"/>
+            <path d="M18 17L15.5 20L18 23L20.5 20L18 17Z" opacity="0.4" fill="currentColor"/>
           </svg>
         <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
       </Link>
@@ -343,9 +336,7 @@ export function TopNavBar() {
         </Popover>
 
         <DropdownMenu onOpenChange={(open) => {
-            // Mark notifications as read when menu is opened, if there are unread ones
             if (open && unreadNotificationsCount > 0) {
-                 // Create a list of IDs of currently unread notifications
                  const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
                  if (unreadIds.length > 0) {
                     setReadNotificationIds(prev => new Set([...prev, ...unreadIds]));
@@ -455,3 +446,4 @@ export function TopNavBar() {
     </header>
   );
 }
+
