@@ -1,17 +1,18 @@
+
 {
   "rules": {
     "users": {
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'bio']) && newData.child('username').isString() && newData.child('username').val().length >= 3 && newData.child('username').val().length <= 30 && newData.child('username').val().matches(/^[a-zA-Z0-9_]+$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 3 && newData.child('displayName').val().length <= 30 && newData.child('displayName').val().matches(/^[a-zA-Z0-9_]+$/) ",
+        ".validate": "newData.hasChildren(['uid', 'username', 'displayName', 'email', 'status']) && newData.child('username').isString() && newData.child('username').val().length >= 3 && newData.child('username').val().length <= 30 && newData.child('username').val().matches(/^[a-zA-Z0-9_]+$/) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 3 && newData.child('displayName').val().length <= 30 && newData.child('displayName').val().matches(/^[a-zA-Z0-9_]+$/) ",
         "uid": { ".validate": "newData.isString() && newData.val() === $uid" },
         "username": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
         "displayName": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)" },
         "email": { ".validate": "newData.isString() && newData.val().length > 0" },
         "avatar": { ".validate": "newData.isString()" },
         "banner": { ".validate": "newData.isString()" },
-        "bio": { ".validate": "newData.isString() && newData.val().length <= 1000" },
+        "status": { ".validate": "newData.isString() && newData.val().length <= 1000" },
         "nameColor": { ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/))" },
         "title": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
         "isShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
@@ -41,8 +42,8 @@
             ".validate": "$chatId.contains('gc-') && newData.isBoolean() && newData.val() === true"
           }
         },
-        "messages": {
-          ".indexOn": ["timestamp"],
+        "messages": { 
+          ".indexOn": ["timestamp"], 
           "$messageId": {
             ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now",
             "senderUid": { ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
@@ -53,9 +54,22 @@
             "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
             "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
-            "senderIsAdmin": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
             "timestamp": { ".validate": "newData.val() === now" },
+            "reactions": {
+              "$reactionType": { // e.g., "thumbsUp", "heart"
+                "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+                "users": {
+                  "$userId": {
+                    ".write": "auth != null && auth.uid === $userId",
+                    ".validate": "newData.isBoolean() && newData.val() === true"
+                  }
+                  // Removed conflicting "$other": { ".validate": false }
+                },
+                "$other": { ".validate": false }
+              }
+            },
+            "readByRecipientTimestamp": { ".validate": "!newData.exists() || newData.isNumber()" },
             "$other": { ".validate": false }
           }
         },
@@ -69,9 +83,22 @@
           "senderTitle": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 50)" },
           "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
-          "senderIsAdmin": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
           "timestamp": { ".validate": "newData.val() === now" },
+          "reactions": {
+            "$reactionType": { // e.g., "thumbsUp", "heart"
+              "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "users": {
+                "$userId": {
+                  ".write": "auth != null && auth.uid === $userId",
+                  ".validate": "newData.isBoolean() && newData.val() === true"
+                }
+                // Removed conflicting "$other": { ".validate": false }
+              },
+              "$other": { ".validate": false }
+            }
+          },
+          "readByRecipientTimestamp": { ".validate": "!newData.exists() || newData.isNumber()" },
           "$other": { ".validate": false }
         }
       }

@@ -63,8 +63,8 @@
                   "$userId": {
                     ".write": "auth != null && auth.uid === $userId",
                     ".validate": "newData.isBoolean() && newData.val() === true"
-                  },
-                  "$other": { ".validate": false }
+                  }
+                  // Removed conflicting "$other": { ".validate": false }
                 },
                 "$other": { ".validate": false }
               }
@@ -92,8 +92,8 @@
                 "$userId": {
                   ".write": "auth != null && auth.uid === $userId",
                   ".validate": "newData.isBoolean() && newData.val() === true"
-                },
-                "$other": { ".validate": false }
+                }
+                // Removed conflicting "$other": { ".validate": false }
               },
               "$other": { ".validate": false }
             }
