@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Palette, Loader2, User as UserIcon, Users, MessageSquare, ShieldCheck } from "lucide-react";
+import { Palette, Loader2, User as UserIcon, Users, MessageSquare, ShieldCheck, MessageCircle } from "lucide-react"; // Added MessageCircle for Status
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
@@ -23,10 +23,10 @@ import { cn } from '@/lib/utils';
 interface UserProfileData {
   uid: string;
   username: string;
-  displayName: string; // Remains as username
+  displayName: string; 
   avatar: string;
   banner?: string;
-  bio: string;
+  status: string; // Changed from bio
   title?: string;
   nameColor?: string;
   isShinyGold?: boolean;
@@ -101,10 +101,10 @@ export default function ViewProfilePage() {
           profileData = {
             uid: uid,
             username: data.username,
-            displayName: data.username, // Set displayName to username
+            displayName: data.username, 
             avatar: data.avatar || `https://placehold.co/128x128.png?text=${data.username?.substring(0,2).toUpperCase() || '??'}`,
             banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
-            bio: data.bio || "No bio yet.",
+            status: data.status || "No status yet.", // Changed from bio
             title: data.title,
             nameColor: data.nameColor,
             isShinyGold: data.isShinyGold || false,
@@ -261,9 +261,9 @@ export default function ViewProfilePage() {
 
           <div>
             <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-semibold">Bio</h3>
+                <h3 className="text-lg font-semibold flex items-center"><MessageCircle size={18} className="mr-2 text-primary"/>Status</h3>
             </div>
-            <p className="text-muted-foreground text-sm whitespace-pre-wrap">{viewedUserProfile.bio || "No bio provided."}</p>
+            <p className="text-muted-foreground text-sm whitespace-pre-wrap">{viewedUserProfile.status || "No status provided."}</p>
           </div>
 
           <Separator className="my-6" />

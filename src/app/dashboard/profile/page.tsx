@@ -8,7 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2, ShieldCheck } from "lucide-react";
+import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2, ShieldCheck, MessageCircle } from "lucide-react"; // Added MessageCircle for Status
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
@@ -33,10 +33,10 @@ import {
 interface UserProfile {
   uid: string;
   username: string;
-  displayName: string; // Remains as username
+  displayName: string; 
   avatar: string;
   banner?: string;
-  bio: string;
+  status: string; // Changed from bio
   title?: string;
   nameColor?: string;
   isShinyGold?: boolean;
@@ -54,8 +54,8 @@ export default function ProfilePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditingBio, setIsEditingBio] = useState(false);
-  const [bioEdit, setBioEdit] = useState('');
+  const [isEditingStatus, setIsEditingStatus] = useState(false); // Changed from isEditingBio
+  const [statusEdit, setStatusEdit] = useState(''); // Changed from bioEdit
   const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -78,10 +78,10 @@ export default function ProfilePage() {
             setUserProfile({
               uid: user.uid,
               username: data.username,
-              displayName: data.username, // Set displayName to username
+              displayName: data.username, 
               avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.username || "U").substring(0,2).toUpperCase()}`,
               banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
-              bio: data.bio || "No bio yet.",
+              status: data.status || "No status yet.", // Changed from bio
               title: data.title,
               nameColor: data.nameColor,
               isShinyGold: data.isShinyGold || false,
@@ -89,23 +89,23 @@ export default function ProfilePage() {
               isAdmin: data.isAdmin || false,
               friendsCount: data.friendsCount || 0,
             });
-            setBioEdit(data.bio || "");
+            setStatusEdit(data.status || ""); // Changed from bio
           } else {
             const fallbackUsername = user.email?.split('@')[0] || "User";
             const basicProfile: UserProfile = {
               uid: user.uid,
               username: fallbackUsername,
-              displayName: fallbackUsername, // Set displayName to username
+              displayName: fallbackUsername, 
               avatar: `https://placehold.co/128x128.png?text=${(fallbackUsername).substring(0,2).toUpperCase()}`,
               banner: "https://placehold.co/1200x300.png?text=Banner",
-              bio: "New user! Ready to chat.",
+              status: "New user! Ready to share my status.", // Changed from bio
               friendsCount: 0,
               isShinyGold: false,
               isShinySilver: false,
               isAdmin: false,
             };
             setUserProfile(basicProfile);
-            setBioEdit(basicProfile.bio);
+            setStatusEdit(basicProfile.status); // Changed from bio
           }
           setIsLoading(false);
         }, (error) => {
@@ -130,19 +130,19 @@ export default function ProfilePage() {
   }, [toast, router]);
 
 
-  const handleBioEditToggle = () => {
-    if (isEditingBio && userProfile && currentUser) {
+  const handleStatusEditToggle = () => { // Renamed from handleBioEditToggle
+    if (isEditingStatus && userProfile && currentUser) {
       const userProfileRef = ref(database, 'users/' + currentUser.uid);
-      update(userProfileRef, { bio: bioEdit })
+      update(userProfileRef, { status: statusEdit }) // Changed from bio
         .then(() => {
-          toast({ title: "Success", description: "Bio updated." });
-          setUserProfile(prev => prev ? {...prev, bio: bioEdit} : null);
+          toast({ title: "Success", description: "Status updated." });
+          setUserProfile(prev => prev ? {...prev, status: statusEdit} : null); // Changed from bio
         })
         .catch(error => {
-          toast({ title: "Error", description: "Could not update bio.", variant: "destructive" });
+          toast({ title: "Error", description: "Could not update status.", variant: "destructive" });
         });
     }
-    setIsEditingBio(!isEditingBio);
+    setIsEditingStatus(!isEditingStatus); // Changed from isEditingBio
   };
 
   const handleImageUpload = async (file: File, imageType: 'avatar' | 'banner') => {
@@ -361,21 +361,21 @@ export default function ProfilePage() {
 
           <div>
             <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-semibold">Bio</h3>
-                <Button variant="ghost" size="sm" onClick={handleBioEditToggle}>
-                    <Edit3 className="mr-2 h-4 w-4" /> {isEditingBio ? "Save Bio" : "Edit Bio"}
+                <h3 className="text-lg font-semibold flex items-center"><MessageCircle size={18} className="mr-2 text-primary" />Status</h3>
+                <Button variant="ghost" size="sm" onClick={handleStatusEditToggle}>
+                    <Edit3 className="mr-2 h-4 w-4" /> {isEditingStatus ? "Save Status" : "Edit Status"}
                 </Button>
             </div>
-            {isEditingBio ? (
+            {isEditingStatus ? (
                 <Textarea
-                    value={bioEdit}
-                    onChange={(e) => setBioEdit(e.target.value)}
-                    placeholder="Tell us about yourself..."
+                    value={statusEdit}
+                    onChange={(e) => setStatusEdit(e.target.value)}
+                    placeholder="What's on your mind?"
                     className="min-h-[100px]"
                     maxLength={1000}
                 />
             ) : (
-                <p className="text-muted-foreground text-sm whitespace-pre-wrap">{userProfile.bio || "No bio provided."}</p>
+                <p className="text-muted-foreground text-sm whitespace-pre-wrap">{userProfile.status || "No status provided."}</p>
             )}
           </div>
 

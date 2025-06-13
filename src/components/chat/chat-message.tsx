@@ -1,18 +1,28 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { SmilePlus, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck, Check, CheckCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
-import { ref, set, get, serverTimestamp, update, remove, runTransaction } from 'firebase/database';
+import { ref, set, get, serverTimestamp, update, remove, runTransaction, increment } from 'firebase/database';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
+export interface ReactionDetail {
+  count: number;
+  users: { [uid: string]: boolean };
+}
+export interface Reactions {
+  thumbsUp?: ReactionDetail;
+  heart?: ReactionDetail;
+  // Add other reaction types here if needed
+}
 
 export interface Message {
   id: string;
@@ -23,27 +33,37 @@ export interface Message {
   senderTitle?: string;
   senderIsShinyGold?: boolean;
   senderIsShinySilver?: boolean;
-  senderIsAdmin?: boolean; // Added for admin indicator
+  senderIsAdmin?: boolean; 
   avatar?: string;
   content: string;
   timestamp: string;
   originalTimestamp?: number;
   isOwnMessage: boolean;
-  reactions?: { [key: string]: number };
+  reactions?: Reactions;
   imageUrl?: string;
   link?: { url: string; title?: string; description?: string; image?: string };
+  chatType?: 'global' | 'gc' | 'dm' | 'ai'; // Added for context
+  readByRecipientTimestamp?: number; // For DM read receipts
 }
 
 interface ChatMessageProps {
   message: Message;
   showAvatarAndSender: boolean;
   isContinuation: boolean;
+  onToggleReaction: (messageId: string, reactionType: keyof Reactions, chatType: Message['chatType'], chatId: string) => void;
+  chatId: string; // Needed for reaction path
 }
 
-export function ChatMessage({ message, showAvatarAndSender, isContinuation }: ChatMessageProps) {
+const availableReactions: Array<{ type: keyof Reactions; icon: React.ElementType }> = [
+  { type: 'thumbsUp', icon: ThumbsUp },
+  { type: 'heart', icon: Heart },
+];
+
+export function ChatMessage({ message, showAvatarAndSender, isContinuation, onToggleReaction, chatId }: ChatMessageProps) {
   const { toast } = useToast();
   const router = useRouter();
   const currentUser = auth.currentUser;
+  const [isReactionPopoverOpen, setIsReactionPopoverOpen] = useState(false);
 
   const handleAddFriendFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
     if (!currentUser || !currentUser.uid) {
@@ -146,7 +166,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         const wereFriends = areFriendsSnap.exists();
 
         updates[`/friends/${currentUser.uid}/${targetUid}`] = null;
-        updates[`/friends/${targetUid}/${currentUser.uid}`] = null; // Corrected path
+        updates[`/friends/${targetUid}/${currentUser.uid}`] = null; 
 
         updates[`/friend_requests/${currentUser.uid}/${targetUid}`] = null;
         updates[`/friend_requests/${targetUid}/${currentUser.uid}`] = null;
@@ -156,8 +176,8 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         if (wereFriends) {
             const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
             const targetUserFriendsCountRef = ref(database, `users/${targetUid}/friendsCount`);
-            await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
-            await runTransaction(targetUserFriendsCountRef, (currentCount) => (currentCount || 0) - 1 < 0 ? 0 : (currentCount || 0) - 1);
+            await runTransaction(currentUserFriendsCountRef, (currentCount) => Math.max(0, (currentCount || 0) - 1));
+            await runTransaction(targetUserFriendsCountRef, (currentCount) => Math.max(0, (currentCount || 0) - 1));
         }
         toast({ title: "User Blocked", description: `You have blocked @${targetUsername}. They have been removed from your friends list.` });
     } catch (error: any) {
@@ -229,7 +249,6 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
     });
   };
 
-
   const renderContent = () => {
     const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
@@ -287,11 +306,12 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
      senderTitleStyle = { color: message.senderNameColor };
   }
 
+  const hasReactions = message.reactions && Object.values(message.reactions).some(r => r && r.count > 0);
 
   return (
     <div
       className={cn(
-        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group',
+        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group relative', // Added relative for popover positioning
         isContinuation ? 'mt-[2px]' : 'my-1',
         message.isOwnMessage
           ? 'ml-auto bg-primary/10'
@@ -363,24 +383,82 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
             {message.link.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{message.link.description}</p>}
           </a>
         )}
-        {(message.reactions && Object.keys(message.reactions).length > 0) && (
-             <div className="mt-2 flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full">
-                    <Smile size={16} />
-                </Button>
-                {message.reactions?.['thumbsup'] && (
-                    <div className="flex items-center bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
-                    <ThumbsUp size={12} className="mr-1" /> {message.reactions['thumbsup']}
-                    </div>
-                )}
-                {message.reactions?.['heart'] && (
-                    <div className="flex items-center bg-destructive/20 text-destructive text-xs px-2 py-0.5 rounded-full">
-                    <Heart size={12} className="mr-1" /> {message.reactions['heart']}
-                    </div>
-                )}
-            </div>
+        {hasReactions && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {availableReactions.map(reaction => {
+              const reactionData = message.reactions?.[reaction.type];
+              if (reactionData && reactionData.count > 0) {
+                const userHasReacted = currentUser && reactionData.users && reactionData.users[currentUser.uid];
+                return (
+                  <Button
+                    key={reaction.type}
+                    variant={userHasReacted ? "default" : "outline"}
+                    size="sm"
+                    className={cn(
+                        "h-auto px-2 py-0.5 text-xs rounded-full",
+                        userHasReacted ? "bg-primary/20 text-primary border-primary/50" : "border-border hover:bg-accent"
+                    )}
+                    onClick={() => {
+                        if (currentUser && message.chatType && chatId) {
+                             onToggleReaction(message.id, reaction.type, message.chatType, chatId);
+                        }
+                    }}
+                    disabled={!currentUser || !message.chatType || !chatId || message.senderUid === 'system' || message.senderUid === 'ai-chatbot-uid'}
+                  >
+                    <reaction.icon className={cn("h-3.5 w-3.5 mr-1", userHasReacted ? "text-primary" : "text-muted-foreground")} />
+                    {reactionData.count}
+                  </Button>
+                );
+              }
+              return null;
+            })}
+          </div>
         )}
       </div>
+
+      {message.chatType === 'dm' && message.isOwnMessage && message.readByRecipientTimestamp && (
+        <CheckCheck size={16} className="absolute bottom-1 right-1 text-blue-500" />
+      )}
+       {message.chatType === 'dm' && message.isOwnMessage && !message.readByRecipientTimestamp && (
+        <Check size={16} className="absolute bottom-1 right-1 text-muted-foreground" />
+      )}
+
+
+      {message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid' && (
+        <Popover open={isReactionPopoverOpen} onOpenChange={setIsReactionPopoverOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                variant="ghost"
+                size="icon"
+                className="absolute -top-3 -right-3 h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                disabled={!currentUser}
+                >
+                <SmilePlus size={16} />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-1">
+                <div className="flex gap-1">
+                {availableReactions.map(reaction => (
+                    <Button
+                    key={reaction.type}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => {
+                        if (currentUser && message.chatType && chatId) {
+                            onToggleReaction(message.id, reaction.type, message.chatType, chatId);
+                            setIsReactionPopoverOpen(false);
+                        }
+                    }}
+                    >
+                    <reaction.icon className="h-5 w-5" />
+                    </Button>
+                ))}
+                </div>
+            </PopoverContent>
+        </Popover>
+      )}
+
       {message.isOwnMessage && showAvatarAndSender && (
         <Avatar className="h-8 w-8 flex-shrink-0 cursor-pointer" onClick={() => router.push('/dashboard/profile')}>
           <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar"/>

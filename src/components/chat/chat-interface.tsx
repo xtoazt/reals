@@ -2,16 +2,16 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ChatMessage, type Message } from './chat-message';
+import { ChatMessage, type Message, type Reactions } from './chat-message';
 import { ChatInput } from './chat-input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown } from 'lucide-react';
+import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown, ThumbsUp, Heart } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove } from 'firebase/database';
+import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove, runTransaction, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,7 @@ interface ChatInterfaceProps {
 interface UserProfileData {
   uid: string;
   username: string;
-  displayName: string; // Remains username
+  displayName: string; 
   avatar?: string;
   nameColor?: string;
   title?: string;
@@ -44,6 +44,7 @@ interface TypingStatus {
 const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
+const MESSAGES_TO_LOAD = 50;
 
 export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,6 +60,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [hasNewMessagesWhileScrolledUp, setHasNewMessagesWhileScrolledUp] = useState(false);
   const prevMessagesLengthRef = useRef(messages.length);
+  const messagesBeingMarkedAsRead = useRef(new Set<string>());
 
 
   const typingStatusRef = useMemo(() => chatId ? ref(database, `typing_status/${chatId}`) : null, [chatId]);
@@ -89,7 +91,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const profile: UserProfileData = {
           uid,
           username: userData.username,
-          displayName: userData.username, // Use username as displayName
+          displayName: userData.username, 
           avatar: userData.avatar,
           nameColor: userData.nameColor,
           title: userData.title,
@@ -119,7 +121,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 setCurrentUserProfile({
                     uid: user.uid,
                     username: fallbackUsername,
-                    displayName: fallbackUsername, // Use username as displayName
+                    displayName: fallbackUsername, 
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
                     isShinySilver: false,
@@ -183,6 +185,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 senderIsShinyGold: false,
                 senderIsShinySilver: false,
                 senderIsAdmin: false,
+                chatType: 'ai',
               }
             ]);
         });
@@ -200,11 +203,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     let messagesPath: string;
     if (chatType === 'gc') {
       messagesPath = `chats/${chatId}/messages`;
-    } else { // 'global' or 'dm'
+    } else { 
       messagesPath = `chats/${chatId}`;
     }
 
-    const messagesRefQuery = query(ref(database, messagesPath), orderByChild('timestamp'), limitToLast(50));
+    const messagesRefQuery = query(ref(database, messagesPath), orderByChild('timestamp'), limitToLast(MESSAGES_TO_LOAD));
 
     const listener = onValue(messagesRefQuery, async (snapshot) => {
       const messageDataArray: { key: string, data: any }[] = [];
@@ -223,7 +226,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
 
-        return {
+        const messageObject: Message = {
             id: msgEntry.key!,
             sender: profile?.displayName || msgData.senderName || "User",
             senderUid: senderUid,
@@ -238,7 +241,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderIsShinyGold: profile?.isShinyGold || msgData.senderIsShinyGold || false,
             senderIsShinySilver: profile?.isShinySilver || msgData.senderIsShinySilver || false,
             senderIsAdmin: profile?.isAdmin || msgData.senderIsAdmin || false,
+            reactions: msgData.reactions || {},
+            chatType: chatType,
+            readByRecipientTimestamp: msgData.readByRecipientTimestamp,
         };
+        
+        // Mark as read for DMs if applicable
+        if (chatType === 'dm' && senderUid !== currentUser?.uid && !msgData.readByRecipientTimestamp && !messagesBeingMarkedAsRead.current.has(msgEntry.key!)) {
+            messagesBeingMarkedAsRead.current.add(msgEntry.key!);
+            const messageRef = ref(database, `${messagesPath}/${msgEntry.key!}`);
+            update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
+                .then(() => messagesBeingMarkedAsRead.current.delete(msgEntry.key!))
+                .catch(err => {
+                    console.error("Failed to mark message as read:", err);
+                    messagesBeingMarkedAsRead.current.delete(msgEntry.key!);
+                });
+        }
+        return messageObject;
       });
 
       const resolvedMessages = await Promise.all(loadedMessagesPromises);
@@ -269,7 +288,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         setHasNewMessagesWhileScrolledUp(true);
       }
 
-      if (!showScrollToBottomButton) { // Auto-scroll if not manually scrolled up
+      if (!showScrollToBottomButton) { 
         setTimeout(() => {
           viewport.scrollTop = viewport.scrollHeight;
         }, 0);
@@ -304,6 +323,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderIsShinyGold: currentUserProfile.isShinyGold,
             senderIsShinySilver: currentUserProfile.isShinySilver,
             senderIsAdmin: currentUserProfile.isAdmin,
+            chatType: 'ai',
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -327,6 +347,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderIsShinyGold: false,
             senderIsShinySilver: false,
             senderIsAdmin: false,
+            chatType: 'ai',
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
@@ -347,6 +368,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderIsShinyGold: false,
             senderIsShinySilver: false,
             senderIsAdmin: false,
+            chatType: 'ai',
           };
           setMessages(prev => [...prev, errorMessage]);
           toast({
@@ -368,7 +390,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     let messagesDbRefPath: string;
     if (chatType === 'gc') {
       messagesDbRefPath = `chats/${chatId}/messages`;
-    } else { // 'global' or 'dm'
+    } else { 
       messagesDbRefPath = `chats/${chatId}`;
     }
     const messagesDbRef = ref(database, messagesDbRefPath);
@@ -384,6 +406,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       senderIsShinyGold: currentUserProfile.isShinyGold || false,
       senderIsShinySilver: currentUserProfile.isShinySilver || false,
       senderIsAdmin: currentUserProfile.isAdmin || false,
+      reactions: {}, // Initialize reactions
     };
 
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
@@ -432,8 +455,32 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
           if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
         }
       }
+      // DM Read Receipts Logic
+      if (chatType === 'dm' && currentUser && !atBottom) { // Only mark if not already at bottom to avoid loops on load
+          messages.forEach(msg => {
+              if (msg.senderUid !== currentUser.uid && !msg.readByRecipientTimestamp && !messagesBeingMarkedAsRead.current.has(msg.id)) {
+                  const messageElement = document.getElementById(`message-${msg.id}`); // Assuming ChatMessage has an id `message-${msg.id}`
+                  if (messageElement) {
+                      const rect = messageElement.getBoundingClientRect();
+                      const viewportRect = viewport.getBoundingClientRect();
+                      if (rect.top >= viewportRect.top && rect.bottom <= viewportRect.bottom) { // Message is fully in view
+                          messagesBeingMarkedAsRead.current.add(msg.id);
+                          const msgPath = chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`;
+                          const messageRef = ref(database, msgPath);
+                          update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
+                              .then(() => messagesBeingMarkedAsRead.current.delete(msg.id))
+                              .catch(err => {
+                                  console.error("Failed to mark message as read on scroll:", err);
+                                  messagesBeingMarkedAsRead.current.delete(msg.id);
+                              });
+                      }
+                  }
+              }
+          });
+      }
+
     }
-  }, []);
+  }, [messages, chatType, currentUser, chatId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = scrollAreaViewportRef.current;
@@ -443,6 +490,39 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
       setHasNewMessagesWhileScrolledUp(false);
     }
   }, []);
+
+  const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
+    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId) return;
+
+    const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
+    const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
+
+    try {
+      await runTransaction(reactionRef, (currentData) => {
+        if (currentData === null) {
+          // User is the first to react with this type
+          return { count: 1, users: { [currentUser.uid]: true } };
+        }
+        
+        const currentUsers = currentData.users || {};
+        if (currentUsers[currentUser.uid]) {
+          // User is removing their reaction
+          currentData.count = (currentData.count || 0) - 1;
+          delete currentUsers[currentUser.uid];
+          if (currentData.count <= 0) return null; // Remove reaction type if no one reacted
+        } else {
+          // User is adding their reaction
+          currentData.count = (currentData.count || 0) + 1;
+          currentUsers[currentUser.uid] = true;
+        }
+        currentData.users = currentUsers;
+        return currentData;
+      });
+    } catch (error) {
+      console.error("Error toggling reaction:", error);
+      toast({ title: "Error", description: "Could not update reaction.", variant: "destructive" });
+    }
+  }, [currentUser, currentUserProfile, toast]);
 
 
   return (
@@ -508,9 +588,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 return (
                   <ChatMessage
                     key={msg.id}
-                    message={msg}
+                    message={{...msg, chatType: chatType}} // Pass chatType to message for context
                     showAvatarAndSender={showAvatarAndSender}
                     isContinuation={isContinuation}
+                    onToggleReaction={handleToggleReaction}
+                    chatId={chatId}
                   />
                 );
               })

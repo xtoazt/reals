@@ -176,7 +176,7 @@ export function AuthForm() {
             email: string; 
             nameColor?: string;
             title?: string;
-            bio: string;
+            status: string; // Changed from bio
             avatar: string;
             banner?: string;
             isShinyGold?: boolean;
@@ -190,7 +190,7 @@ export function AuthForm() {
             email: emailForAuth, 
             avatar: `https://placehold.co/128x128.png?text=${values.username.substring(0,2).toUpperCase()}`,
             banner: `https://placehold.co/1200x300.png?text=Hello+${values.username}`,
-            bio: "New user! Ready to chat.",
+            status: "New user! Ready to chat.", // Changed from bio
             friendsCount: 0,
             isAdmin: isAdminSignup,
             isShinyGold: isShinyGoldSignup,
