@@ -280,12 +280,9 @@ export function TopNavBar() {
 
       <Link href="/dashboard" className="flex items-center gap-2">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-          {/* Top Diamond / Chevron */}
-          <path d="M12 2L2 8.5L12 15L22 8.5L12 2Z" fill="currentColor" />
-          {/* Middle Chevron (slightly faded) */}
-          <path d="M2 9.5L12 16L22 9.5L12 22.5L2 9.5Z" fill="currentColor" opacity="0.7" />
-          {/* Bottom Chevron (more faded) */}
-          <path d="M2 10.5L12 17L22 10.5L12 23.5L2 10.5Z" fill="currentColor" opacity="0.4" />
+          <path d="M12 2L2 8.5L12 15L22 8.5L12 2Z" stroke="currentColor" fill="none" strokeWidth="1.5" />
+          <path d="M2 9.5L12 16L22 9.5L12 22.5L2 9.5Z" stroke="currentColor" fill="none" strokeWidth="1.5" opacity="0.7" />
+          <path d="M2 10.5L12 17L22 10.5L12 23.5L2 10.5Z" stroke="currentColor" fill="none" strokeWidth="1.5" opacity="0.4" />
         </svg>
         <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
       </Link>
@@ -324,13 +321,13 @@ export function TopNavBar() {
                 <h4 className="font-medium leading-none">About RealTalk</h4>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
                   I just made this so that people wouldn't have to use a Google Doc to talk or risk silent lunch lol.
-                  {"\n\n"}
+                  {"\\n\\n"}
                   My username is <strong>rohan_</strong>, anyone else is a fake.
-                  {"\n\n"}
+                  {"\\n\\n"}
                   please contact me about any errors or requests you have
-                  {"\n\n"}
+                  {"\\n\\n"}
                   also don't worry about this getting blocked, making new links is actually so easy
-                  {"\n\n"}
+                  {"\\n\\n"}
                   (so can you share this now)
                 </p>
               </div>
@@ -449,3 +446,4 @@ export function TopNavBar() {
     </header>
   );
 }
+
