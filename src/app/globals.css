@@ -307,3 +307,52 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Paper Airplane Animations */
+@layer utilities {
+  @keyframes glideAcross {
+    0% {
+      transform: translateX(-150px) rotate(var(--start-rotation, -5deg));
+      opacity: 0;
+    }
+    10% {
+      opacity: 1;
+    }
+    90% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(calc(100vw + 150px)) rotate(var(--end-rotation, 5deg));
+      opacity: 0;
+    }
+  }
+
+  @keyframes glideAcrossReverse {
+    0% {
+      transform: translateX(calc(100vw + 150px)) rotate(var(--start-rotation, 5deg));
+      opacity: 0;
+    }
+    10% {
+      opacity: 1;
+    }
+    90% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(-150px) rotate(var(--end-rotation, -5deg));
+      opacity: 0;
+    }
+  }
+
+  .animate-glide {
+    animation-name: glideAcross;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+
+  .animate-glide-reverse {
+    animation-name: glideAcrossReverse;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+}
