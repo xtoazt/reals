@@ -70,33 +70,33 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
-  const fetchUserProfileForDialog = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid];
-    try {
-      const userRef = ref(database, `users/${uid}`);
-      const snapshot = await get(userRef);
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const profile: UserProfileData = {
-          uid,
-          id: uid, // for Friend compatibility
-          username: userData.username || "unknown_user",
-          displayName: userData.displayName || userData.username || "Unknown User",
-          avatar: userData.avatar,
-          nameColor: userData.nameColor,
-        };
-        setUsersCache(prev => ({ ...prev, [uid]: profile }));
-        return profile;
-      }
-      return null;
-    } catch (error) {
-      console.error(`Error fetching user profile for ${uid} in dialog:`, error);
-      return null;
-    }
-  }, [usersCache]); // Depends on usersCache
-
   useEffect(() => {
     let isMounted = true;
+
+    const fetchUserProfileForDialog = async (uid: string): Promise<UserProfileData | null> => {
+      if (usersCache[uid] && isMounted) return usersCache[uid];
+      try {
+        const userRef = ref(database, `users/${uid}`);
+        const snapshot = await get(userRef);
+        if (snapshot.exists() && isMounted) {
+          const userData = snapshot.val();
+          const profile: UserProfileData = {
+            uid,
+            id: uid, // for Friend compatibility
+            username: userData.username || "unknown_user",
+            displayName: userData.displayName || userData.username || "Unknown User",
+            avatar: userData.avatar,
+            nameColor: userData.nameColor,
+          };
+          if (isMounted) setUsersCache(prev => ({ ...prev, [uid]: profile }));
+          return profile;
+        }
+        return null;
+      } catch (error) {
+        if (isMounted) console.error(`Error fetching user profile for ${uid} in dialog:`, error);
+        return null;
+      }
+    };
 
     const loadFriendsData = async () => {
       if (!currentUser || !isMounted) {
@@ -138,7 +138,6 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         const successfullyFetchedFriends: Friend[] = [];
         profilesResults.forEach(result => {
           if (result.status === 'fulfilled' && result.value) {
-            // Ensure the fetched profile matches the Friend interface structure
             successfullyFetchedFriends.push(result.value as Friend);
           }
         });
@@ -171,7 +170,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => {
       isMounted = false;
     };
-  }, [isOpen, currentUser, toast]); // Removed fetchUserProfileForDialog dependency
+  }, [isOpen, currentUser, toast, usersCache]); // usersCache is a dependency for fetchUserProfileForDialog closure
 
   const handleOpenChange = (openValue: boolean) => {
     setIsOpen(openValue);
@@ -182,6 +181,15 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       setIsCreatingGC(false);
       // Data-related state (friendsToDisplay, isLoadingFriends, usersCache) is reset by the useEffect above
     }
+  };
+
+  const handleSelectFriend = (friendId: string) => {
+    if (isCreatingGC) return; // Prevent selection changes while creating
+    setSelectedFriends((prevSelected) =>
+      prevSelected.includes(friendId)
+        ? prevSelected.filter((id) => id !== friendId)
+        : [...prevSelected, friendId]
+    );
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
