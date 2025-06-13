@@ -33,15 +33,6 @@ interface Friend {
   nameColor?: string;
 }
 
-// UserProfileData interface might not be strictly needed here if we simplify
-// interface UserProfileData {
-//   uid: string;
-//   username: string;
-//   displayName: string;
-//   avatar?: string;
-//   nameColor?: string;
-// }
-
 interface CreateGCDialogProps {
   children?: React.ReactNode;
 }
@@ -56,7 +47,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
-  const [isLoadingFriends, setIsLoadingFriends] = useState(false); // Changed from isLoadingData
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
 
   useEffect(() => {
@@ -67,17 +58,15 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   }, []);
 
   useEffect(() => {
-    // This effect handles loading friends data when the dialog opens
-    if (!isOpen || !currentUser) {
-      setFriendsToDisplay([]);
-      setIsLoadingFriends(false);
-      return;
-    }
-
-    let isMounted = true; // Flag to prevent state updates if component unmounts
+    let isMounted = true;
 
     const loadFriendsData = async () => {
-      if (!isMounted) return;
+      if (!currentUser || !isMounted) {
+        setFriendsToDisplay([]);
+        setIsLoadingFriends(false);
+        return;
+      }
+
       setIsLoadingFriends(true);
       setFriendsToDisplay([]); // Clear previous list
 
@@ -86,14 +75,16 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         const friendsSnapshot = await get(friendsDbRef);
         const friendsData = friendsSnapshot.val();
 
-        if (!friendsData) {
+        if (!friendsData || !isMounted) {
           if (isMounted) setFriendsToDisplay([]);
+          setIsLoadingFriends(false);
           return;
         }
 
         const friendUIDs = Object.keys(friendsData);
-        if (friendUIDs.length === 0) {
-          if (isMounted) setFriendsToDisplay([]);
+        if (friendUIDs.length === 0 && isMounted) {
+          setFriendsToDisplay([]);
+          setIsLoadingFriends(false);
           return;
         }
         
@@ -111,16 +102,16 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
                 nameColor: userData.nameColor,
               } as Friend;
             }
-            return null; // User profile might not exist
+            return null;
           } catch (profileError) {
             console.error(`Error fetching profile for UID ${uid}:`, profileError);
-            return null; // Treat error as profile not found for this item
+            return null;
           }
         });
         
         const profilesResults = await Promise.allSettled(profilePromises);
         
-        if (!isMounted) return; // Check again before setting state
+        if (!isMounted) return;
 
         const fetchedFriends: Friend[] = [];
         profilesResults.forEach(result => {
@@ -143,26 +134,25 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       }
     };
 
-    loadFriendsData();
-
-    return () => {
-      isMounted = false; // Cleanup: set mounted to false when effect unmounts
-    };
-  }, [isOpen, currentUser, toast]); // Dependencies: isOpen, currentUser, and toast (should be stable)
-
-
-  useEffect(() => {
-    // Reset form fields when dialog closes
-    if (!isOpen) {
+    if (isOpen) {
+      loadFriendsData();
+    } else {
+      // Reset states when dialog is closed
       setGCName('');
       setSelectedFriends([]);
-      // friendsToDisplay and isLoadingFriends are reset by the main data loading effect
+      setFriendsToDisplay([]);
+      setIsLoadingFriends(false);
       setIsCreatingGC(false);
     }
-  }, [isOpen]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, currentUser, toast]);
+
 
   const handleSelectFriend = (friendId: string) => {
-    if (isCreatingGC) return; // Prevent selection changes while submitting
+    if (isCreatingGC) return;
     setSelectedFriends((prev) =>
       prev.includes(friendId)
         ? prev.filter((id) => id !== friendId)
@@ -176,8 +166,10 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       toast({ title: 'Error', description: 'You must be logged in to create a GC.', variant: 'destructive' });
       return;
     }
-    // Get creator's display name, fallback to username or generic "User"
-    const creatorDisplayName = currentUser.displayName || currentUser.email?.split('@')[0] || "User";
+    
+    const creatorProfileSnapshot = await get(ref(database, `users/${currentUser.uid}`));
+    const creatorProfileData = creatorProfileSnapshot.val();
+    const creatorDisplayName = creatorProfileData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || "User";
 
 
     if (!gcName.trim()) {
@@ -208,7 +200,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         senderUid: 'system',
         senderName: 'System',
         senderUsername: 'system',
-        avatar: `https://placehold.co/40x40.png?text=SYS`, // Placeholder for system messages
+        avatar: `https://placehold.co/40x40.png?text=SYS`,
         content: initialMessageContent,
         timestamp: serverTimestamp(),
       };
@@ -244,7 +236,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-[480px]"> {/* This is the line from the error log */}
+      <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle className="flex items-center"><MessageSquareText className="mr-2 h-5 w-5" />Create New Group Chat</DialogTitle>
@@ -286,7 +278,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
                           id={`friend-${friend.id}`}
                           checked={selectedFriends.includes(friend.id)}
                           aria-labelledby={`friend-label-${friend.id}`}
-                          disabled={isCreatingGC || isLoadingFriends} // Disable checkbox while loading friends too
+                          disabled={isCreatingGC || isLoadingFriends}
                         />
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
