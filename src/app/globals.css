@@ -204,7 +204,7 @@
   }
 
   .text-shiny-gold {
-    font-weight: 700; 
+    font-weight: 700;
     background: linear-gradient(
       90deg,
       #C0A060, /* Softer Dark Gold */
@@ -219,7 +219,7 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
     -moz-text-fill-color: transparent;
-    text-fill-color: transparent; 
+    text-fill-color: transparent;
     animation: shiny-gold-text-anim 5s linear infinite;
   }
 
@@ -233,7 +233,7 @@
   }
 
   .text-shiny-silver {
-    font-weight: 700; 
+    font-weight: 700;
     background: linear-gradient(
       90deg,
       #A0A0A0, /* Medium Grey */
@@ -248,7 +248,7 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
     -moz-text-fill-color: transparent;
-    text-fill-color: transparent; 
+    text-fill-color: transparent;
     animation: shiny-silver-text-anim 5s linear infinite;
   }
 
@@ -322,27 +322,9 @@
     100% { transform: translateX(calc(100vw + 100px)) translateY(var(--end-offset-y, 0px)) rotate(var(--end-rotation)); opacity: 0; }
   }
 
-  @keyframes glideAcrossReverse {
-    0% { transform: translateX(calc(100vw + 100px)) translateY(0px) rotate(var(--start-rotation)); opacity: 0; }
-    5% { opacity: 0.8; }
-    15% { transform: translateX(85vw) translateY(-8px) rotate(calc(var(--start-rotation) + 4deg)); }
-    30% { transform: translateX(70vw) translateY(5px) rotate(calc(var(--start-rotation) - 3deg)); }
-    45% { transform: translateX(55vw) translateY(-6px) rotate(calc(var(--start-rotation) + 2deg)); }
-    60% { transform: translateX(40vw) translateY(4px) rotate(calc(var(--start-rotation) - 2deg)); }
-    75% { transform: translateX(25vw) translateY(-3px) rotate(calc(var(--start-rotation) + 1deg)); }
-    95% { opacity: 0.8; }
-    100% { transform: translateX(-100px) translateY(var(--end-offset-y, 0px)) rotate(var(--end-rotation)); opacity: 0; }
-  }
-
   .animate-glide {
     animation-name: glideAcross;
-    animation-timing-function: linear; 
-    animation-fill-mode: forwards;
-  }
-
-  .animate-glide-reverse {
-    animation-name: glideAcrossReverse;
-    animation-timing-function: linear; 
+    animation-timing-function: linear;
     animation-fill-mode: forwards;
   }
 }
