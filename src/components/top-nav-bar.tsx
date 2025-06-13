@@ -292,6 +292,12 @@ export function TopNavBar() {
                   I just made this so that people wouldn't have to use a Google Doc to talk or risk silent lunch lol.
                   {"\n\n"}
                   My username is rohan., anyone else is a fake.
+                  {"\n\n"}
+                  please contact me about any errors or requests you have
+                  {"\n\n"}
+                  also don't worry about this getting blocked, making new links is actually so easy
+                  {"\n"}
+                  (so can you share this now)
                 </p>
               </div>
             </div>
