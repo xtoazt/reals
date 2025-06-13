@@ -4,11 +4,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
-const MIN_INTERVAL = 90 * 1000; // 1.5 minutes for automatic spawning
-const MAX_INTERVAL = 150 * 1000; // 2.5 minutes for automatic spawning
-const ANIMATION_DURATION_S_MIN = 5; // Minimum animation duration
-const ANIMATION_DURATION_S_MAX = 7; // Maximum animation duration
-const MAX_AIRPLANES_AUTO = 3; // Max airplanes from automatic spawning to prevent clutter
+const MIN_INTERVAL = 90 * 1000; 
+const MAX_INTERVAL = 150 * 1000;
+const ANIMATION_DURATION_S_MIN = 3; // Faster: 3 seconds min
+const ANIMATION_DURATION_S_MAX = 5; // Faster: 5 seconds max
+const MAX_AIRPLANES_AUTO = 3; 
 
 interface Airplane {
   id: string;
@@ -17,6 +17,7 @@ interface Airplane {
   startRotation: number;
   endRotation: number;
   animationDuration: number;
+  endOffsetY: number; // For varied end vertical position
 }
 
 const PaperAirplaneAnimation: React.FC = () => {
@@ -25,20 +26,22 @@ const PaperAirplaneAnimation: React.FC = () => {
 
   const addAirplane = useCallback(() => {
     const animationDuration = Math.random() * (ANIMATION_DURATION_S_MAX - ANIMATION_DURATION_S_MIN) + ANIMATION_DURATION_S_MIN;
+    const fromLeft = Math.random() < 0.5;
     const newAirplane: Airplane = {
       id: `airplane-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      fromLeft: Math.random() < 0.5,
-      top: `${Math.floor(Math.random() * 70) + 10}vh`, // 10vh to 80vh
-      startRotation: Math.floor(Math.random() * 20 - 10), // -10 to +10 degrees
-      endRotation: Math.floor(Math.random() * 40 - 20),   // -20 to +20 degrees
+      fromLeft: fromLeft,
+      top: `${Math.floor(Math.random() * 70) + 10}vh`, 
+      startRotation: Math.floor(Math.random() * 10 - 5), // More subtle start: -5 to +5 degrees
+      endRotation: Math.floor(Math.random() * 30 - 15),   // More subtle end: -15 to +15 degrees
       animationDuration: animationDuration,
+      endOffsetY: Math.floor(Math.random() * 60 - 30), // Random vertical offset at end: -30px to +30px
     };
 
     setAirplanes((prevAirplanes) => [...prevAirplanes, newAirplane]);
 
     setTimeout(() => {
       setAirplanes((prevs) => prevs.filter((p) => p.id !== newAirplane.id));
-    }, animationDuration * 1000 + 500); // Remove after animation + buffer
+    }, animationDuration * 1000 + 500); 
   }, []);
 
 
@@ -52,13 +55,15 @@ const PaperAirplaneAnimation: React.FC = () => {
         const autoSpawnedCount = currentAirplanes.filter(ap => ap.id.startsWith("airplane-auto-")).length;
         if (autoSpawnedCount < MAX_AIRPLANES_AUTO) {
            const animationDuration = Math.random() * (ANIMATION_DURATION_S_MAX - ANIMATION_DURATION_S_MIN) + ANIMATION_DURATION_S_MIN;
+           const fromLeft = Math.random() < 0.5;
             const newAirplane: Airplane = {
               id: `airplane-auto-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              fromLeft: Math.random() < 0.5,
+              fromLeft: fromLeft,
               top: `${Math.floor(Math.random() * 70) + 10}vh`,
-              startRotation: Math.floor(Math.random() * 20 - 10),
-              endRotation: Math.floor(Math.random() * 40 - 20),
+              startRotation: Math.floor(Math.random() * 10 - 5),
+              endRotation: Math.floor(Math.random() * 30 - 15),
               animationDuration: animationDuration,
+              endOffsetY: Math.floor(Math.random() * 60 - 30),
             };
             
             setTimeout(() => {
@@ -69,15 +74,15 @@ const PaperAirplaneAnimation: React.FC = () => {
         }
         return currentAirplanes;
       });
-      scheduleNextAutoFlight(); // Schedule the next one
+      scheduleNextAutoFlight(); 
     }, nextInterval);
   }, []);
 
   useEffect(() => {
     const initialDelay = Math.random() * (MAX_INTERVAL / 4) + (MIN_INTERVAL / 4);
     const initialTimer = setTimeout(() => {
-      addAirplane(); // Add one initial airplane
-      scheduleNextAutoFlight(); // Then start the regular schedule
+      addAirplane(); 
+      scheduleNextAutoFlight(); 
     }, initialDelay);
     
     return () => {
@@ -90,7 +95,7 @@ const PaperAirplaneAnimation: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === '`') {
-        event.preventDefault(); // Prevent typing the backtick if in an input
+        event.preventDefault(); 
         addAirplane();
       }
     };
@@ -111,24 +116,22 @@ const PaperAirplaneAnimation: React.FC = () => {
             ['--start-rotation' as string]: `${plane.startRotation}deg`,
             ['--end-rotation' as string]: `${plane.endRotation}deg`,
             animationDuration: `${plane.animationDuration}s`,
-            // Random small vertical offset at the end for variation
-            ['--end-offset-y' as string]: `${Math.floor(Math.random() * 40 - 20)}px`, 
+            ['--end-offset-y' as string]: `${plane.endOffsetY}px`,
+            transform: !plane.fromLeft ? 'scaleX(-1)' : 'scaleX(1)', // Flip if flying from right
           }}
           className={cn(
             'fixed z-[9999] pointer-events-none opacity-0',
             plane.fromLeft ? 'animate-glide' : 'animate-glide-reverse'
           )}
         >
-          {/* Side View Paper Airplane SVG Icon */}
+          {/* New Side View Paper Airplane SVG Icon */}
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"
-            className="w-6 h-6 md:w-8 md:h-8 text-primary drop-shadow-lg"
-            // Apply a base rotation if the SVG isn't "pointing" the right way for horizontal flight
-            // This SVG (standard send icon) points right, so direct animation rotation is fine.
-            // style={{ transform: 'rotate(-45deg)' }} // Example if SVG needs base rotation
+            className="w-5 h-5 md:w-6 md:h-6 text-primary drop-shadow-lg"
           >
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+            {/* Path for a side-view paper airplane */}
+            <path d="M1.74,12.08l10.8-3.09L1.74,4.24V1.9L22.26,12,1.74,22.1V19.76l10.8-3.09Z"/>
           </svg>
         </div>
       ))}
