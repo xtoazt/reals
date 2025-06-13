@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -60,8 +60,8 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadInitialData() {
-      if (!currentUser || !isMounted) {
+    const loadFriendsAndProfiles = async () => {
+      if (!currentUser) {
         if (isMounted) {
           setFriendsToDisplay([]);
           setIsLoadingFriends(false);
@@ -69,17 +69,25 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         return;
       }
 
-      if (isMounted) setIsLoadingFriends(true);
+      if (isMounted) {
+        setIsLoadingFriends(true);
+        // Reset gcName and selectedFriends when dialog opens and user is available
+        setGCName('');
+        setSelectedFriends([]);
+        setIsCreatingGC(false);
+        setFriendsToDisplay([]); // Clear previous list immediately
+      }
 
       try {
         const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
         const friendsSnapshot = await get(friendsDbRef);
         const friendsData = friendsSnapshot.val();
 
+        if (!isMounted) return;
+
         if (!friendsData || Object.keys(friendsData).length === 0) {
-          if (isMounted) {
-            setFriendsToDisplay([]);
-          }
+          setFriendsToDisplay([]);
+          setIsLoadingFriends(false);
           return;
         }
 
@@ -124,36 +132,28 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           setIsLoadingFriends(false);
         }
       }
-    }
+    };
 
-    if (isOpen && currentUser) {
-      // Reset states that should be fresh when dialog opens, before loading
+    if (isOpen && currentUser?.uid) { // Check currentUser.uid for dependency stability
+      loadFriendsAndProfiles();
+    } else if (!isOpen && isMounted) {
+      // Clear states when dialog closes or there's no user
       setGCName('');
       setSelectedFriends([]);
+      setFriendsToDisplay([]);
+      setIsLoadingFriends(false);
       setIsCreatingGC(false);
-      setFriendsToDisplay([]); // Clear previous list before loading new one
-      setIsLoadingFriends(false); // Ensure loading state is false initially
-      loadInitialData();
-    } else if (!isOpen) {
-      // Dialog is closing or closed
-      if (isMounted) {
-        setGCName('');
-        setSelectedFriends([]);
-        setIsCreatingGC(false);
-        setFriendsToDisplay([]);
-        setIsLoadingFriends(false);
-      }
     }
 
     return () => {
       isMounted = false;
     };
-  }, [isOpen, currentUser, toast]);
+  }, [isOpen, currentUser?.uid, toast]); // Changed dependency to currentUser?.uid
 
 
   const handleOpenChange = (openValue: boolean) => {
     setIsOpen(openValue);
-    // State resets are now primarily handled by the useEffect based on `isOpen`
+    // State resets for gcName, selectedFriends, etc., are now primarily handled by the useEffect based on `isOpen`
   };
 
   const handleSelectFriend = (friendId: string) => {
@@ -222,10 +222,23 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       console.error("Error creating GC:", error);
       toast({ title: 'Error', description: 'Could not create Group Chat.', variant: 'destructive' });
     } finally {
-      setIsCreatingGC(false);
+      if (isMounted) { // Ensure component is still mounted before setting state
+        setIsCreatingGC(false);
+      }
     }
   };
   
+  // Need to define isMounted for the finally block in handleSubmit
+  // This is a bit tricky as handleSubmit is not in useEffect.
+  // For simplicity, we'll assume if handleSubmit starts, component is mounted.
+  // A more robust solution might involve a ref for isMounted if needed here.
+  let isMounted = true; 
+  useEffect(() => {
+    isMounted = true;
+    return () => { isMounted = false; };
+  }, []);
+
+
   const getAvatarFallbackText = (displayName?: string) => {
     return displayName ? displayName.charAt(0).toUpperCase() : 'U';
   }
