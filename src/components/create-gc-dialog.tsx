@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -59,8 +59,9 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
-  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
-
+  // usersCache stores profiles fetched *during the current open session* of the dialog.
+  // It's reset when the dialog closes.
+  const [usersCache, setUsersCache] = useState<Record<string, UserProfileData>>({});
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -72,96 +73,103 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   useEffect(() => {
     let isMounted = true;
 
-    const loadFriendsData = async () => {
+    // Helper to fetch a single profile, attempting to use the session's cache first.
+    // This function is defined inside useEffect to capture the correct `isMounted` and other states.
+    const fetchFriendProfileWithSessionCache = async (
+      uid: string,
+      currentSessionCache: Record<string, UserProfileData> // Pass the cache snapshot
+    ): Promise<UserProfileData | null> => {
+      if (currentSessionCache[uid]) {
+        return currentSessionCache[uid];
+      }
+      try {
+        const userRefDb = ref(database, `users/${uid}`);
+        const snapshot = await get(userRefDb);
+        if (snapshot.exists() && isMounted) {
+          const userData = snapshot.val();
+          const profile: UserProfileData = {
+            uid,
+            id: uid,
+            username: userData.username || "unknown_user",
+            displayName: userData.displayName || userData.username || "Unknown User",
+            avatar: userData.avatar,
+            nameColor: userData.nameColor,
+          };
+          return profile;
+        }
+        return null;
+      } catch (fetchError) {
+        if (isMounted) {
+          console.error(`Error fetching user profile for ${uid} in dialog:`, fetchError);
+        }
+        return null;
+      }
+    };
+
+    const loadFriendsAndProfiles = async () => {
       if (!currentUser || !isMounted) {
         if (isMounted) {
-            setFriendsToDisplay([]);
-            setIsLoadingFriends(false);
+          setFriendsToDisplay([]);
+          setIsLoadingFriends(false);
         }
         return;
       }
 
       if (isMounted) {
         setIsLoadingFriends(true);
-        setFriendsToDisplay([]); 
       }
-
-      // Temporary cache for this specific load operation.
-      // It will be used to update the component's state usersCache once.
-      const currentBatchFetchedProfiles: Record<string, UserProfileData> = {};
 
       try {
         const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
         const friendsSnapshot = await get(friendsDbRef);
         const friendsData = friendsSnapshot.val();
 
-        if (!friendsData || !isMounted) {
-          if (isMounted) setFriendsToDisplay([]);
-          if (isMounted) setIsLoadingFriends(false);
+        if (!friendsData || Object.keys(friendsData).length === 0) {
+          if (isMounted) {
+            setFriendsToDisplay([]);
+            setIsLoadingFriends(false);
+          }
           return;
         }
 
         const friendUIDs = Object.keys(friendsData);
-        if (friendUIDs.length === 0 && isMounted) {
-          if (isMounted) setFriendsToDisplay([]);
-          if (isMounted) setIsLoadingFriends(false);
-          return;
-        }
         
-        const profilesPromises = friendUIDs.map(async (uid) => {
-          // Check the main usersCache (from state) first.
-          // If a profile exists there, use it for this batch directly.
-          if (usersCache[uid]) {
-            currentBatchFetchedProfiles[uid] = usersCache[uid];
-            return usersCache[uid];
-          }
-          // If not in main cache, fetch it.
-          try {
-            const userRefDb = ref(database, `users/${uid}`);
-            const snapshot = await get(userRefDb);
-            if (snapshot.exists() && isMounted) {
-              const userData = snapshot.val();
-              const profile: UserProfileData = {
-                uid,
-                id: uid, 
-                username: userData.username || "unknown_user",
-                displayName: userData.displayName || userData.username || "Unknown User",
-                avatar: userData.avatar,
-                nameColor: userData.nameColor,
-              };
-              currentBatchFetchedProfiles[uid] = profile; // Add to this batch's temporary cache
-              return profile;
-            }
-            return null;
-          } catch (fetchError) {
-            if (isMounted) console.error(`Error fetching user profile for ${uid} in dialog:`, fetchError);
-            return null;
-          }
-        });
+        // Take a snapshot of the current usersCache from state at the beginning of this async operation
+        const currentCacheSnapshot = usersCache; 
+        const newProfilesFetchedThisRun: Record<string, UserProfileData> = {};
         
-        const profilesResults = await Promise.allSettled(profilesPromises);
+        const profilesPromises = friendUIDs.map(uid => 
+          fetchFriendProfileWithSessionCache(uid, currentCacheSnapshot) // Use the snapshot
+        );
         
+        const profilesResults = await Promise.all(profilesPromises);
+
         if (!isMounted) return;
 
-        const successfullyFetchedFriends: Friend[] = [];
-        profilesResults.forEach(result => {
-          if (result.status === 'fulfilled' && result.value) {
-            successfullyFetchedFriends.push(result.value as Friend);
+        const successfullyDisplayedFriends: Friend[] = [];
+        profilesResults.forEach(profile => {
+          if (profile) {
+            successfullyDisplayedFriends.push(profile);
+            // If this profile wasn't in the cache snapshot we started with, it's new for this session
+            if (!currentCacheSnapshot[profile.uid]) {
+              newProfilesFetchedThisRun[profile.uid] = profile;
+            }
           }
         });
         
         if (isMounted) {
-          // Update the main usersCache state ONCE with all profiles collected in this batch.
-          // This merges new profiles from currentBatchFetchedProfiles with existing ones in usersCache.
-          setUsersCache(prevCache => ({ ...prevCache, ...currentBatchFetchedProfiles }));
-          setFriendsToDisplay(successfullyFetchedFriends);
+          // If any new profiles were fetched, update the main usersCache state
+          if (Object.keys(newProfilesFetchedThisRun).length > 0) {
+            setUsersCache(prevCache => ({ ...prevCache, ...newProfilesFetchedThisRun }));
+          }
+          setFriendsToDisplay(successfullyDisplayedFriends);
         }
 
       } catch (error) {
         if (isMounted) {
           console.error("Error loading friends data for GC dialog:", error);
           toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
-          setFriendsToDisplay([]);
+          setFriendsToDisplay([]); 
         }
       } finally {
         if (isMounted) {
@@ -171,31 +179,31 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     };
 
     if (isOpen && currentUser) {
-      loadFriendsData();
+      loadFriendsAndProfiles();
     } else if (!isOpen) {
-      // When dialog closes, reset all relevant states including the usersCache.
+      // Dialog is closing or closed, reset all relevant states.
       if (isMounted) {
+        setGCName('');
+        setSelectedFriends([]);
+        setIsCreatingGC(false);
         setFriendsToDisplay([]);
         setIsLoadingFriends(false);
-        setUsersCache({}); 
+        setUsersCache({}); // Crucially, reset the session cache.
       }
     }
 
     return () => {
       isMounted = false;
     };
-  }, [isOpen, currentUser, toast]); // usersCache is NOT a dependency here to prevent loops.
+  // `usersCache` state is NOT a dependency here.
+  // This effect should only run when `isOpen` or `currentUser` changes.
+  // `toast` is from `useToast` and should be stable.
+  }, [isOpen, currentUser, toast]);
+
 
   const handleOpenChange = (openValue: boolean) => {
     setIsOpen(openValue);
-    if (!openValue) {
-      // Dialog is closing, reset FORM internal state
-      setGCName('');
-      setSelectedFriends([]);
-      setIsCreatingGC(false);
-      // Data-loading related state (friendsToDisplay, isLoadingFriends, usersCache)
-      // is primarily reset by the useEffect above when isOpen becomes false.
-    }
+    // All state resets related to dialog closing are now handled by the useEffect above.
   };
 
   const handleSelectFriend = (friendId: string) => {
@@ -258,7 +266,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         description: `"${gcName}" is ready.`,
       });
 
-      setIsOpen(false); 
+      handleOpenChange(false); // This will trigger the useEffect to clean up states
       router.push(`/dashboard/chat/${newGCId}`);
     } catch (error) {
       console.error("Error creating GC:", error);
