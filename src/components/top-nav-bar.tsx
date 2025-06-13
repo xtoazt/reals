@@ -112,7 +112,7 @@ export function TopNavBar() {
         });
       } else {
         setUserProfileData(null);
-        setRawFriendRequestsData(null); // Clear raw data on logout
+        setRawFriendRequestsData(null); 
         setNotifications([]);
         setReadNotificationIds(new Set());
       }
@@ -120,7 +120,7 @@ export function TopNavBar() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Effect 1: Fetch raw friend requests from Firebase
+  
   useEffect(() => {
     if (!currentUser) {
       setRawFriendRequestsData(null);
@@ -137,26 +137,26 @@ export function TopNavBar() {
     return () => off(friendRequestsRefHandle, 'value', listener);
   }, [currentUser]);
 
-  // Effect 2: Process raw data and readNotificationIds to update final `notifications` state
+  
   useEffect(() => {
     const newProcessedNotifications: AppNotification[] = [];
     if (rawFriendRequestsData) {
       Object.entries(rawFriendRequestsData).forEach(([senderUid, request]) => {
         if (request.status === 'pending') {
           newProcessedNotifications.push({
-            id: senderUid, // Using senderUid as notification ID for friend requests
+            id: senderUid, 
             title: 'New Friend Request',
             description: `${request.senderUsername} wants to be your friend.`,
             timestamp: request.timestamp,
             link: '/dashboard/friends?tab=friend-requests',
-            read: readNotificationIds.has(senderUid), // Apply read status
+            read: readNotificationIds.has(senderUid), 
             icon: UserPlus,
             type: 'friend_request',
           });
         }
       });
     }
-    // Sort and set the final notifications list
+    
     setNotifications(newProcessedNotifications.sort((a, b) => b.timestamp - a.timestamp));
   }, [rawFriendRequestsData, readNotificationIds]);
 
@@ -206,21 +206,20 @@ export function TopNavBar() {
         }
       });
     }
-    // Add other notification type IDs here if they exist
+    
 
     if (idsToMarkReadFromRaw.size > 0) {
       setReadNotificationIds(prev => new Set([...prev, ...idsToMarkReadFromRaw]));
       toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
     } else {
-      // Only toast if there were no notifications to begin with, or if they were already read.
-      // This logic could be refined if we know if `notifications` array was empty due to all being read vs none existing.
+       
        if(notifications.length === 0) {
          toast({title: "No Notifications", description: "No pending notifications to clear."});
        } else {
          toast({title: "Notifications Already Read", description: "All notifications were already marked as read."});
        }
     }
-  }, [rawFriendRequestsData, notifications, toast]); // notifications added for the else condition
+  }, [rawFriendRequestsData, notifications, toast]); 
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
@@ -441,5 +440,3 @@ export function TopNavBar() {
     </header>
   );
 }
-
-    
