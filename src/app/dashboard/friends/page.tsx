@@ -16,26 +16,37 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-interface FriendRequest {
-  id: string;
+interface FriendRequestData { // Raw data from Firebase for a request
+  senderUsername: string;
+  senderUid: string;
+  timestamp: number;
+  status: 'pending';
+}
+
+interface FriendRequest { // Processed request with full profile
+  id: string; // senderUid
   senderUsername: string;
   senderAvatar?: string;
   senderNameColor?: string;
   senderIsShinyGold?: boolean;
   senderIsShinySilver?: boolean;
-  senderIsAdmin?: boolean; // Added for admin indicator
+  senderIsAdmin?: boolean;
   timestamp: number;
 }
 
-interface Friend {
-  id: string;
+interface FriendData { // Raw data for a friend relationship
+    since: number;
+}
+
+interface Friend { // Processed friend with full profile
+  id: string; // friendUid
   username: string;
-  displayName: string; // Remains username
+  displayName: string;
   avatar?: string;
   nameColor?: string;
   isShinyGold?: boolean;
   isShinySilver?: boolean;
-  isAdmin?: boolean; // Added for admin indicator
+  isAdmin?: boolean;
   isOnline?: boolean;
   lastChanged?: number;
 }
@@ -43,7 +54,7 @@ interface Friend {
 interface UserProfileData {
     uid: string;
     username: string;
-    displayName: string; // Remains username
+    displayName: string;
     avatar?: string;
     nameColor?: string;
     isShinyGold?: boolean;
@@ -66,175 +77,224 @@ export default function FriendsPage() {
   const [friendUsernameToAdd, setFriendUsernameToAdd] = useState('');
   const [isLoadingAddFriend, setIsLoadingAddFriend] = useState(false);
 
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  // Store raw UIDs and their associated data from Firebase listeners
+  const [rawFriendRequests, setRawFriendRequests] = useState<Record<string, FriendRequestData>>({});
+  const [rawFriends, setRawFriends] = useState<Record<string, FriendData>>({});
 
+  // Cache for user profiles to avoid redundant fetches
+  const [usersCache, setUsersCache] = useState<Record<string, UserProfileData | null>>({});
+
+  // Derived lists for display
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
+
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
 
-  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
-  const [presenceListeners, setPresenceListeners] = useState<{[uid: string]: () => void}>({});
-
-
-  const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid];
+  // Stable function to fetch a user profile and update the cache
+  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<void> => {
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile = {
-            uid,
-            username: userData.username,
-            displayName: userData.username, // Use username
-            avatar: userData.avatar,
-            nameColor: userData.nameColor,
-            isShinyGold: userData.isShinyGold || false,
-            isShinySilver: userData.isShinySilver || false,
-            isAdmin: userData.isAdmin || false,
-            friendsCount: userData.friendsCount
+        const profile: UserProfileData = {
+          uid,
+          username: userData.username,
+          displayName: userData.username,
+          avatar: userData.avatar,
+          nameColor: userData.nameColor,
+          isShinyGold: userData.isShinyGold || false,
+          isShinySilver: userData.isShinySilver || false,
+          isAdmin: userData.isAdmin || false,
+          friendsCount: userData.friendsCount,
         };
-        setUsersCache(prev => ({...prev, [uid]: profile}));
-        return profile;
+        setUsersCache(prev => ({ ...prev, [uid]: profile }));
+      } else {
+        setUsersCache(prev => ({ ...prev, [uid]: null })); // Cache null if not found
       }
-      return null;
     } catch (error) {
-      console.error("Error fetching user profile:", error);
-      return null;
+      console.error(`Error fetching user profile for ${uid}:`, error);
+      setUsersCache(prev => ({ ...prev, [uid]: null })); // Cache null on error
     }
-  }, [usersCache]);
+  }, [setUsersCache]); // setUsersCache is stable from useState
 
+  // Effect for current user authentication and profile
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
-        fetchUserProfile(user.uid).then(profile => {
-            if(profile) setCurrentUserProfile(profile);
-        });
+        if (usersCache[user.uid] === undefined) {
+          fetchAndCacheUserProfile(user.uid);
+        }
       } else {
         setCurrentUserProfile(null);
+        setRawFriendRequests({});
+        setRawFriends({});
+        setUsersCache({}); // Clear cache on logout
         setFriendRequests([]);
         setFriends([]);
         setIsLoadingRequests(false);
         setIsLoadingFriends(false);
-        Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
-        setPresenceListeners({});
       }
     });
-    return () => {
-      unsubscribeAuth();
-      Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
-      setPresenceListeners({});
-    };
-  }, [fetchUserProfile, presenceListeners]);
+    return () => unsubscribeAuth();
+  }, [fetchAndCacheUserProfile]); // usersCache removed
 
+  // Update currentUserProfile when its data is in usersCache
   useEffect(() => {
-    if (!currentUser) return;
+    if (currentUser && usersCache[currentUser.uid]) {
+      setCurrentUserProfile(usersCache[currentUser.uid]);
+    }
+  }, [currentUser, usersCache]);
+
+
+  // Effect to listen for raw friend requests UIDs
+  useEffect(() => {
+    if (!currentUser) {
+      setRawFriendRequests({});
+      setIsLoadingRequests(false);
+      return;
+    }
     setIsLoadingRequests(true);
     const requestsRef = ref(database, `friend_requests/${currentUser.uid}`);
-    const listener = onValue(requestsRef, async (snapshot) => {
-      const requestsData = snapshot.val();
-      if (requestsData) {
-        const loadedRequests: FriendRequest[] = [];
-        for (const senderUid in requestsData) {
-          if (requestsData[senderUid]?.status !== 'pending') continue;
-          const request = requestsData[senderUid];
-          const senderProfile = await fetchUserProfile(senderUid);
-          loadedRequests.push({
-            id: senderUid,
-            senderUsername: senderProfile?.username || request.senderUsername || "Unknown User",
-            senderAvatar: senderProfile?.avatar,
-            senderNameColor: senderProfile?.nameColor,
-            senderIsShinyGold: senderProfile?.isShinyGold || false,
-            senderIsShinySilver: senderProfile?.isShinySilver || false,
-            senderIsAdmin: senderProfile?.isAdmin || false,
-            timestamp: request.timestamp,
-          });
-        }
-        setFriendRequests(loadedRequests.sort((a, b) => b.timestamp - a.timestamp));
-      } else {
-        setFriendRequests([]);
-      }
-      setIsLoadingRequests(false);
+    const listener = onValue(requestsRef, (snapshot) => {
+      const requestsData = snapshot.val() as Record<string, FriendRequestData> | null;
+      setRawFriendRequests(requestsData || {});
+      // setIsLoadingRequests(false); // Loading will be false when derived list is ready
     }, (error) => {
-        console.error("Error fetching friend requests:", error);
-        toast({title: "Error", description: "Could not load friend requests.", variant: "destructive"});
-        setIsLoadingRequests(false);
+      console.error("Error fetching friend requests:", error);
+      toast({ title: "Error", description: "Could not load friend requests.", variant: "destructive" });
+      setRawFriendRequests({});
+      setIsLoadingRequests(false);
     });
     return () => off(requestsRef, 'value', listener);
-  }, [currentUser, fetchUserProfile, toast]);
+  }, [currentUser, toast]);
 
+  // Effect to process raw friend requests and fetch profiles
   useEffect(() => {
-    if (!currentUser) return;
+    const uidsToFetch = Object.keys(rawFriendRequests).filter(uid => usersCache[uid] === undefined);
+    if (uidsToFetch.length > 0) {
+      setIsLoadingRequests(true); // Ensure loading is true if there are fetches
+      Promise.allSettled(uidsToFetch.map(uid => fetchAndCacheUserProfile(uid)));
+    }
+
+    const processedRequests: FriendRequest[] = [];
+    let allProfilesForRequestsLoaded = true;
+    for (const senderUid in rawFriendRequests) {
+      if (rawFriendRequests[senderUid]?.status !== 'pending') continue;
+      const requestData = rawFriendRequests[senderUid];
+      const senderProfile = usersCache[senderUid];
+
+      if (senderProfile === undefined) {
+        allProfilesForRequestsLoaded = false; // Still waiting for this profile
+        continue; // Skip if profile not yet fetched/cached
+      }
+      if (senderProfile) { // Profile is loaded (not null)
+        processedRequests.push({
+          id: senderUid,
+          senderUsername: senderProfile.username || requestData.senderUsername || "Unknown User",
+          senderAvatar: senderProfile.avatar,
+          senderNameColor: senderProfile.nameColor,
+          senderIsShinyGold: senderProfile.isShinyGold || false,
+          senderIsShinySilver: senderProfile.isShinySilver || false,
+          senderIsAdmin: senderProfile.isAdmin || false,
+          timestamp: requestData.timestamp,
+        });
+      }
+      // If profile is null (not found/error), we don't add it or explicitly handle it
+    }
+    setFriendRequests(processedRequests.sort((a, b) => b.timestamp - a.timestamp));
+    if (Object.keys(rawFriendRequests).length === 0 || allProfilesForRequestsLoaded) {
+        setIsLoadingRequests(false);
+    }
+
+  }, [rawFriendRequests, usersCache, fetchAndCacheUserProfile]);
+
+
+  // Effect to listen for raw friends UIDs
+  useEffect(() => {
+    if (!currentUser) {
+      setRawFriends({});
+      setIsLoadingFriends(false);
+      return;
+    }
     setIsLoadingFriends(true);
     const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
-
-    const newPresenceListeners: { [uid: string]: () => void } = {};
-
-    const friendsListener = onValue(friendsDbRef, async (snapshot) => {
-      const friendsData = snapshot.val();
-      Object.keys(presenceListeners).forEach(uid => {
-        if (!friendsData || !friendsData[uid]) {
-          presenceListeners[uid]();
-          delete presenceListeners[uid];
-        }
-      });
-      setPresenceListeners(prev => ({...prev}));
-
-      if (friendsData) {
-        const friendUIDs = Object.keys(friendsData);
-        const loadedFriendsPromises = friendUIDs.map(async (friendUid) => {
-          const profile = await fetchUserProfile(friendUid);
-          if (profile) {
-            return {
-              id: friendUid,
-              username: profile.username,
-              displayName: profile.displayName, // Already username
-              avatar: profile.avatar,
-              nameColor: profile.nameColor,
-              isShinyGold: profile.isShinyGold || false,
-              isShinySilver: profile.isShinySilver || false,
-              isAdmin: profile.isAdmin || false,
-              isOnline: false,
-            };
-          }
-          return null;
-        });
-
-        let resolvedFriends = (await Promise.all(loadedFriendsPromises)).filter(f => f !== null) as Friend[];
-        setFriends(resolvedFriends);
-
-        resolvedFriends.forEach(friend => {
-          if (!presenceListeners[friend.id] && !newPresenceListeners[friend.id]) {
-            const presenceRef = ref(database, `/presence/${friend.id}`);
-            const listener = onValue(presenceRef, (presenceSnap) => {
-              const presenceData = presenceSnap.val() as PresenceData | null;
-              setFriends(prevFriends => prevFriends.map(f =>
-                f.id === friend.id
-                  ? { ...f, isOnline: presenceData?.isOnline || false, lastChanged: presenceData?.lastChanged }
-                  : f
-              ));
-            });
-            newPresenceListeners[friend.id] = () => off(presenceRef, 'value', listener);
-          }
-        });
-        setPresenceListeners(prev => ({...prev, ...newPresenceListeners}));
-
-      } else {
-        setFriends([]);
-      }
-      setIsLoadingFriends(false);
+    const listener = onValue(friendsDbRef, (snapshot) => {
+      const friendsData = snapshot.val() as Record<string, FriendData> | null;
+      setRawFriends(friendsData || {});
+      // setIsLoadingFriends(false); // Loading handled by processing effect
     }, (error) => {
-        console.error("Error fetching friends list:", error);
-        toast({title: "Error", description: "Could not load friends list.", variant: "destructive"});
+      console.error("Error fetching friends list:", error);
+      toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
+      setRawFriends({});
+      setIsLoadingFriends(false);
+    });
+    return () => off(friendsDbRef, 'value', listener);
+  }, [currentUser, toast]);
+
+  // Effect to process raw friends and fetch profiles
+  useEffect(() => {
+    const uidsToFetch = Object.keys(rawFriends).filter(uid => usersCache[uid] === undefined);
+     if (uidsToFetch.length > 0) {
+      setIsLoadingFriends(true); // Ensure loading is true if there are fetches
+      Promise.allSettled(uidsToFetch.map(uid => fetchAndCacheUserProfile(uid)));
+    }
+
+    const processedFriends: Friend[] = [];
+    let allProfilesForFriendsLoaded = true;
+    for (const friendUid in rawFriends) {
+      const friendProfile = usersCache[friendUid];
+      if (friendProfile === undefined) {
+          allProfilesForFriendsLoaded = false;
+          continue;
+      }
+      if (friendProfile) {
+        processedFriends.push({
+          id: friendUid,
+          username: friendProfile.username,
+          displayName: friendProfile.displayName,
+          avatar: friendProfile.avatar,
+          nameColor: friendProfile.nameColor,
+          isShinyGold: friendProfile.isShinyGold || false,
+          isShinySilver: friendProfile.isShinySilver || false,
+          isAdmin: friendProfile.isAdmin || false,
+          isOnline: false, // Will be updated by presence effect
+        });
+      }
+    }
+    setFriends(processedFriends);
+     if (Object.keys(rawFriends).length === 0 || allProfilesForFriendsLoaded) {
         setIsLoadingFriends(false);
+    }
+  }, [rawFriends, usersCache, fetchAndCacheUserProfile]);
+
+
+  // Effect for presence listeners
+  useEffect(() => {
+    if (friends.length === 0) return;
+
+    const newPresenceListeners: Record<string, () => void> = {};
+    friends.forEach(friend => {
+      const presenceRef = ref(database, `/presence/${friend.id}`);
+      const listener = onValue(presenceRef, (presenceSnap) => {
+        const presenceData = presenceSnap.val() as PresenceData | null;
+        setFriends(prevFriends =>
+          prevFriends.map(f =>
+            f.id === friend.id
+              ? { ...f, isOnline: presenceData?.isOnline || false, lastChanged: presenceData?.lastChanged }
+              : f
+          )
+        );
+      });
+      newPresenceListeners[friend.id] = () => off(presenceRef, 'value', listener);
     });
 
     return () => {
-      off(friendsDbRef, 'value', friendsListener);
       Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe());
     };
-  }, [currentUser, fetchUserProfile, toast]);
+  }, [friends]); // Rerun when the derived friends list changes
 
 
   const generateDmChatId = (uid1: string, uid2: string): string => {
@@ -313,7 +373,7 @@ export default function FriendsPage() {
 
       const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       await set(requestPayloadRef, {
-        senderUsername: currentUserProfile.username,
+        senderUsername: currentUserProfile.username, // Use current user's actual username
         senderUid: currentUser.uid,
         timestamp: serverTimestamp(),
         status: "pending"
@@ -444,9 +504,9 @@ export default function FriendsPage() {
               className="flex-1"
               value={friendUsernameToAdd}
               onChange={(e) => setFriendUsernameToAdd(e.target.value)}
-              disabled={isLoadingAddFriend || !currentUser}
+              disabled={isLoadingAddFriend || !currentUser || !currentUserProfile?.username}
             />
-            <Button onClick={handleAddFriend} disabled={isLoadingAddFriend || !currentUser || !friendUsernameToAdd.trim()} className="transition-colors">
+            <Button onClick={handleAddFriend} disabled={isLoadingAddFriend || !currentUser || !currentUserProfile?.username || !friendUsernameToAdd.trim()} className="transition-colors">
               {isLoadingAddFriend ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
               Add Friend
             </Button>
@@ -592,3 +652,5 @@ export default function FriendsPage() {
     </div>
   );
 }
+
+    
