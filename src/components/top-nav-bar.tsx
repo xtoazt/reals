@@ -279,10 +279,22 @@ export function TopNavBar() {
       </Sheet>
 
       <Link href="/dashboard" className="flex items-center gap-2">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-          <path d="M12 2L2 8.5L12 15L22 8.5L12 2Z" stroke="currentColor" fill="none" strokeWidth="1.5" />
-          <path d="M2 9.5L12 16L22 9.5L12 22.5L2 9.5Z" stroke="currentColor" fill="none" strokeWidth="1.5" opacity="0.7" />
-          <path d="M2 10.5L12 17L22 10.5L12 23.5L2 10.5Z" stroke="currentColor" fill="none" strokeWidth="1.5" opacity="0.4" />
+        <svg width="28" height="28" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
+          <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.01" /> {/* Hidden for bounding box, helps with alignment */}
+          {/* Top square (cube face) */}
+          <path d="M12 4L16 6L12 8L8 6L12 4Z" />
+          <path d="M8 6L8 10L12 12L12 8" />
+          <path d="M16 6L16 10L12 12" />
+          
+          {/* Middle square (cube face) - offset down and slightly back */}
+          <path d="M12 9L16 11L12 13L8 11L12 9Z" />
+          <path d="M8 11L8 15L12 17L12 13" />
+          <path d="M16 11L16 15L12 17" />
+
+          {/* Bottom square (cube face) - offset further down */}
+          <path d="M12 14L16 16L12 18L8 16L12 14Z" />
+          <path d="M8 16L8 20L12 22L12 18" />
+          <path d="M16 16L16 20L12 22" />
         </svg>
         <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
       </Link>
@@ -446,4 +458,3 @@ export function TopNavBar() {
     </header>
   );
 }
-
