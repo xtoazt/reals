@@ -279,10 +279,13 @@ export function TopNavBar() {
       </Sheet>
 
       <Link href="/dashboard" className="flex items-center gap-2">
-        <svg width="28" height="28" viewBox="0 0 10 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-            <rect x="0" y="0" width="10" height="10" fill="currentColor"/>
-            <rect x="0" y="11" width="10" height="10" fill="currentColor"/>
-            <rect x="0" y="22" width="10" height="10" fill="currentColor"/>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
+          {/* Top Diamond / Chevron */}
+          <path d="M12 2L2 8.5L12 15L22 8.5L12 2Z" fill="currentColor" />
+          {/* Middle Chevron (slightly faded) */}
+          <path d="M2 9.5L12 16L22 9.5L12 22.5L2 9.5Z" fill="currentColor" opacity="0.7" />
+          {/* Bottom Chevron (more faded) */}
+          <path d="M2 10.5L12 17L22 10.5L12 23.5L2 10.5Z" fill="currentColor" opacity="0.4" />
         </svg>
         <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
       </Link>
@@ -446,3 +449,4 @@ export function TopNavBar() {
     </header>
   );
 }
+
