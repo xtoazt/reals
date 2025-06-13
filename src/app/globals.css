@@ -307,24 +307,3 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
-
-/* Paper Airplane Animations */
-@layer utilities {
-  @keyframes glideAcross {
-    0% { transform: translateX(-100px) translateY(0px) rotate(var(--start-rotation)); opacity: 0; }
-    2% { opacity: 0.8; } /* Quick fade in */
-    20% { transform: translateX(20vw) translateY(-5px) rotate(calc(var(--start-rotation) + 2deg)); } /* Slight dip */
-    40% { transform: translateX(40vw) translateY(3px) rotate(calc(var(--start-rotation) - 1deg)); }  /* Slight rise */
-    60% { transform: translateX(60vw) translateY(-4px) rotate(calc(var(--start-rotation) + 3deg)); } /* Dip again */
-    80% { transform: translateX(80vw) translateY(2px) rotate(calc(var(--start-rotation) - 2deg)); }  /* Gentle rise */
-    98% { opacity: 0.8; } /* Start fade out */
-    100% { transform: translateX(calc(100vw + 100px)) translateY(var(--end-offset-y, 0px)) rotate(var(--end-rotation)); opacity: 0; }
-  }
-
-  .animate-glide {
-    animation-name: glideAcross;
-    animation-timing-function: linear;
-    animation-fill-mode: forwards;
-  }
-}
-

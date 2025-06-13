@@ -6,7 +6,6 @@ import { TopNavBar } from '@/components/top-nav-bar';
 import { auth, database, setupPresence, goOnline, goOffline } from '@/lib/firebase'; // Import database instance
 import { onAuthStateChanged } from 'firebase/auth';
 import React, { useEffect } from 'react'; // Import React and useEffect
-import PaperAirplaneAnimation from '@/components/paper-airplane-animation'; // Import the new component
 
 export default function DashboardLayout({
   children,
@@ -54,7 +53,6 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
       <ParticlesBackground />
-      <PaperAirplaneAnimation /> {/* Added Paper Airplane Animation Component */}
       <TopNavBar />
       <main className="flex-1 overflow-y-auto p-4 md:p-6 pt-[calc(57px+1rem)] md:pt-[calc(57px+1.5rem)]">
         {children}
