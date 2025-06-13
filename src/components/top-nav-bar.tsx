@@ -296,7 +296,7 @@ export function TopNavBar() {
                   please contact me about any errors or requests you have
                   {"\n\n"}
                   also don't worry about this getting blocked, making new links is actually so easy
-                  {"\n"}
+                  {"\n\n"}
                   (so can you share this now)
                 </p>
               </div>
