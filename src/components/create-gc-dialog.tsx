@@ -33,6 +33,17 @@ interface Friend {
   nameColor?: string;
 }
 
+// Minimal UserProfileData structure needed within this component
+interface UserProfileData {
+    uid: string;
+    id: string; // duplicate uid here for Friend compatibility if needed, or adjust Friend interface
+    username: string;
+    displayName: string;
+    avatar?: string;
+    nameColor?: string;
+}
+
+
 interface CreateGCDialogProps {
   children?: React.ReactNode;
 }
@@ -49,6 +60,8 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
+  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
+
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -57,9 +70,33 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
+  const fetchUserProfileForDialog = useCallback(async (uid: string): Promise<UserProfileData | null> => {
+    if (usersCache[uid]) return usersCache[uid];
+    try {
+      const userRef = ref(database, `users/${uid}`);
+      const snapshot = await get(userRef);
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const profile: UserProfileData = {
+          uid,
+          id: uid, // for Friend compatibility
+          username: userData.username || "unknown_user",
+          displayName: userData.displayName || userData.username || "Unknown User",
+          avatar: userData.avatar,
+          nameColor: userData.nameColor,
+        };
+        setUsersCache(prev => ({ ...prev, [uid]: profile }));
+        return profile;
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error fetching user profile for ${uid} in dialog:`, error);
+      return null;
+    }
+  }, [usersCache]); // Depends on usersCache
+
   useEffect(() => {
     let isMounted = true;
-    let resetTimerId: NodeJS.Timeout | null = null;
 
     const loadFriendsData = async () => {
       if (!currentUser || !isMounted) {
@@ -70,8 +107,10 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         return;
       }
 
-      if (isMounted) setIsLoadingFriends(true);
-      if (isMounted) setFriendsToDisplay([]); // Clear previous list
+      if (isMounted) {
+        setIsLoadingFriends(true);
+        setFriendsToDisplay([]); 
+      }
 
       try {
         const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
@@ -91,38 +130,19 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           return;
         }
         
-        const profilePromises = friendUIDs.map(async (uid) => {
-          try {
-            const userRefPath = `users/${uid}`;
-            const profileSnapshot = await get(ref(database, userRefPath));
-            if (profileSnapshot.exists()) {
-              const userData = profileSnapshot.val();
-              return {
-                id: uid,
-                username: userData.username || "unknown_user",
-                displayName: userData.displayName || userData.username || "Unknown User",
-                avatar: userData.avatar,
-                nameColor: userData.nameColor,
-              } as Friend;
-            }
-            return null;
-          } catch (profileError) {
-            console.error(`Error fetching profile for UID ${uid}:`, profileError);
-            return null;
-          }
-        });
-        
-        const profilesResults = await Promise.allSettled(profilePromises);
+        const fetchedFriendsPromises = friendUIDs.map(uid => fetchUserProfileForDialog(uid));
+        const profilesResults = await Promise.allSettled(fetchedFriendsPromises);
         
         if (!isMounted) return;
 
-        const fetchedFriends: Friend[] = [];
+        const successfullyFetchedFriends: Friend[] = [];
         profilesResults.forEach(result => {
           if (result.status === 'fulfilled' && result.value) {
-            fetchedFriends.push(result.value);
+            // Ensure the fetched profile matches the Friend interface structure
+            successfullyFetchedFriends.push(result.value as Friend);
           }
         });
-        if (isMounted) setFriendsToDisplay(fetchedFriends);
+        if (isMounted) setFriendsToDisplay(successfullyFetchedFriends);
 
       } catch (error) {
         console.error("Error loading friends data for GC dialog:", error);
@@ -137,43 +157,31 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       }
     };
 
-    if (isOpen) {
-      if (currentUser) {
-        loadFriendsData();
-      } else {
-        // Dialog opened, but no user yet. Clear lists, handle loading state.
+    if (isOpen && currentUser) {
+      loadFriendsData();
+    } else if (!isOpen) {
+      // If dialog closes, reset data-loading related state
+      if (isMounted) {
         setFriendsToDisplay([]);
-        setIsLoadingFriends(true); // Or false depending on desired UX
+        setIsLoadingFriends(false);
+        setUsersCache({}); // Clear local cache when dialog closes
       }
-    } else {
-      // Reset states when dialog is closed and component is still mounted
-      resetTimerId = setTimeout(() => {
-        if (isMounted) {
-          setGCName('');
-          setSelectedFriends([]);
-          setFriendsToDisplay([]);
-          setIsLoadingFriends(false);
-          setIsCreatingGC(false);
-        }
-      }, 0);
     }
 
     return () => {
       isMounted = false;
-      if (resetTimerId) {
-        clearTimeout(resetTimerId);
-      }
     };
-  }, [isOpen, currentUser, toast]);
+  }, [isOpen, currentUser, toast]); // Removed fetchUserProfileForDialog dependency
 
-
-  const handleSelectFriend = (friendId: string) => {
-    if (isCreatingGC) return;
-    setSelectedFriends((prev) =>
-      prev.includes(friendId)
-        ? prev.filter((id) => id !== friendId)
-        : [...prev, friendId]
-    );
+  const handleOpenChange = (openValue: boolean) => {
+    setIsOpen(openValue);
+    if (!openValue) {
+      // Dialog is closing, reset FORM internal state
+      setGCName('');
+      setSelectedFriends([]);
+      setIsCreatingGC(false);
+      // Data-related state (friendsToDisplay, isLoadingFriends, usersCache) is reset by the useEffect above
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -242,7 +250,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {children ? (
         <DialogTrigger asChild>{children}</DialogTrigger>
       ) : (
