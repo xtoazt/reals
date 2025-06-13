@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Loader2, UserX, UsersSlash } from "lucide-react";
+import { ArrowLeft, Loader2, UserX, ShieldOff } from "lucide-react"; // Replaced UsersSlash with ShieldOff
 import { useToast } from "@/hooks/use-toast";
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -142,7 +142,7 @@ export default function BlockedUsersPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="font-headline text-2xl flex items-center">
-                <UsersSlash className="mr-3 h-6 w-6 text-primary" />
+                <ShieldOff className="mr-3 h-6 w-6 text-primary" /> {/* Replaced UsersSlash with ShieldOff */}
                 Manage Blocked Users
             </CardTitle>
             <Button variant="outline" asChild>
