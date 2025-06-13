@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText } from 'lucide-react'; 
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText, Info } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,19 +14,19 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; 
-import { CreateGCDialog } from './create-gc-dialog'; 
-import { ThemeToggle } from '@/components/theme-toggle'; 
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { CreateGCDialog } from './create-gc-dialog';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import React, { useEffect, useState, useCallback } from 'react'; 
+import React, { useEffect, useState, useCallback } from 'react';
 import { ref, onValue, off } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -45,18 +45,18 @@ interface UserProfileData {
   isShinyGold?: boolean;
   isShinySilver?: boolean;
   isAdmin?: boolean;
-  username?: string; 
+  username?: string;
 }
 
 interface AppNotification {
-  id: string; 
+  id: string;
   title: string;
   description: string;
   timestamp: number;
-  link?: string; 
+  link?: string;
   read: boolean;
-  icon?: React.ElementType; 
-  type: 'friend_request' | 'system' | 'message'; 
+  icon?: React.ElementType;
+  type: 'friend_request' | 'system' | 'message';
 }
 
 interface RawFriendRequest {
@@ -76,7 +76,7 @@ export function TopNavBar() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set()); 
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
 
 
   useEffect(() => {
@@ -96,21 +96,21 @@ export function TopNavBar() {
               isShinyGold: data.isShinyGold || false,
               isShinySilver: data.isShinySilver || false,
               isAdmin: data.isAdmin || false,
-              username: data.username, 
+              username: data.username,
             });
           } else {
-             setUserProfileData({ 
-                displayName: user.displayName || "User", 
-                isShinyGold: false, 
+             setUserProfileData({
+                displayName: user.displayName || "User",
+                isShinyGold: false,
                 isShinySilver: false,
                 isAdmin: false,
-                username: user.email?.split('@')[0] 
+                username: user.email?.split('@')[0]
             });
           }
         });
       } else {
         setUserProfileData(null);
-        setNotifications([]); 
+        setNotifications([]);
       }
     });
     return () => unsubscribeAuth();
@@ -118,7 +118,7 @@ export function TopNavBar() {
 
   useEffect(() => {
     if (!currentUser) {
-        setNotifications([]); 
+        setNotifications([]);
         return;
     }
 
@@ -130,12 +130,12 @@ export function TopNavBar() {
             Object.entries(requestsData).forEach(([senderUid, request]) => {
                 if (request.status === 'pending') {
                     newNotifications.push({
-                        id: senderUid, 
+                        id: senderUid,
                         title: 'New Friend Request',
                         description: `${request.senderUsername} wants to be your friend.`,
                         timestamp: request.timestamp,
-                        link: '/dashboard/friends?tab=friend-requests', 
-                        read: readNotificationIds.has(senderUid), 
+                        link: '/dashboard/friends?tab=friend-requests',
+                        read: readNotificationIds.has(senderUid),
                         icon: UserPlus,
                         type: 'friend_request',
                     });
@@ -159,7 +159,7 @@ export function TopNavBar() {
       toast({ title: 'Logout Failed', description: 'Could not log you out. Please try again.', variant: 'destructive' });
     }
   };
-  
+
   const getAvatarFallback = (name?: string) => {
     if (!name) return 'U';
     const parts = name.split(' ');
@@ -185,16 +185,16 @@ export function TopNavBar() {
     setReadNotificationIds(prev => new Set(prev).add(id));
      setNotifications(prevNots => prevNots.map(n => n.id === id ? {...n, read: true} : n));
   }, []);
-  
+
   const clearAllNotifications = useCallback(() => {
     const idsToMarkRead = notifications.map(n => n.id);
     setReadNotificationIds(prev => new Set([...prev, ...idsToMarkRead]));
-    setNotifications(prevNots => prevNots.map(n => ({...n, read: true}))); 
+    setNotifications(prevNots => prevNots.map(n => ({...n, read: true})));
     toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
   }, [notifications]);
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
-  
+
   let userDisplayNameClasses = "";
   let userDisplayNameStyle = {};
   if (userProfileData?.isShinyGold) {
@@ -274,10 +274,30 @@ export function TopNavBar() {
           </TabsList>
         </Tabs>
       </nav>
-      
+
       <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle /> 
-        
+        <ThemeToggle />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <Info className="h-[1.2rem] w-[1.2rem]" />
+              <span className="sr-only">About RealTalk</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80" align="end">
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none">About RealTalk</h4>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                  I just made this so that people wouldn't have to use a Google Doc to talk or risk silent lunch lol.
+                  {"\n\n"}
+                  My username is rohan., anyone else is a fake.
+                </p>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         <DropdownMenu onOpenChange={(open) => {
             if (open && unreadNotificationsCount > 0) {
                  notifications.filter(n => !n.read).forEach(n => markNotificationAsRead(n.id));
@@ -309,8 +329,8 @@ export function TopNavBar() {
                 notifications.map(notif => {
                   const IconComponent = notif.icon || Sparkles;
                   return (
-                    <DropdownMenuItem 
-                      key={notif.id} 
+                    <DropdownMenuItem
+                      key={notif.id}
                       className={cn(
                         "flex items-start gap-2.5 p-2.5 cursor-pointer transition-colors hover:bg-muted",
                         notif.read ? 'opacity-60' : 'font-medium'
@@ -351,6 +371,7 @@ export function TopNavBar() {
                   <div className="flex flex-col space-y-1">
                     <p className={cn("text-sm font-medium leading-none", userDisplayNameClasses)} style={userDisplayNameStyle}>
                       {userProfileData.displayName}
+                       {userProfileData.isAdmin && <span className="ml-1 text-xs text-destructive">(Admin)</span>}
                     </p>
                     {userProfileData.title && (
                       <p className={cn(userTitleClasses)} style={userTitleStyle}>

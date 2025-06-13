@@ -26,7 +26,7 @@ interface ChatInterfaceProps {
 interface UserProfileData {
   uid: string;
   username: string;
-  displayName: string;
+  displayName: string; // Remains username
   avatar?: string;
   nameColor?: string;
   title?: string;
@@ -88,7 +88,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
         const userData = snapshot.val();
         const profile: UserProfileData = {
           uid,
-          username: userData.username || "unknown_user",
+          username: userData.username,
           displayName: userData.username, // Use username as displayName
           avatar: userData.avatar,
           nameColor: userData.nameColor,
@@ -115,11 +115,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             if(profile) {
                 setCurrentUserProfile(profile);
             } else {
-                // Fallback basic profile if DB fetch fails or user has no specific data yet
+                const fallbackUsername = user.email?.split('@')[0] || "user";
                 setCurrentUserProfile({
                     uid: user.uid,
-                    username: user.email?.split('@')[0] || "user",
-                    displayName: user.email?.split('@')[0] || "User", // Use username as displayName
+                    username: fallbackUsername,
+                    displayName: fallbackUsername, // Use username as displayName
                     avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
                     isShinyGold: false,
                     isShinySilver: false,
@@ -182,6 +182,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
                 senderNameColor: aiProfile?.nameColor || '#8B5CF6',
                 senderIsShinyGold: false,
                 senderIsShinySilver: false,
+                senderIsAdmin: false,
               }
             ]);
         });
@@ -208,8 +209,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
     const listener = onValue(messagesRefQuery, async (snapshot) => {
       const messageDataArray: { key: string, data: any }[] = [];
       snapshot.forEach((childSnapshot) => {
-        // For DMs and Global, direct children are messages. For GCs, they are also messages.
-        // We need to ensure we only process actual message objects, not metadata like gcName if path is `chats/${chatId}` for non-GCs.
         const msgData = childSnapshot.val();
         if (msgData && typeof msgData === 'object' && msgData.senderUid && msgData.content && msgData.timestamp) {
             messageDataArray.push({ key: childSnapshot.key!, data: msgData });
@@ -238,6 +237,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderTitle: profile?.title || msgData.senderTitle,
             senderIsShinyGold: profile?.isShinyGold || msgData.senderIsShinyGold || false,
             senderIsShinySilver: profile?.isShinySilver || msgData.senderIsShinySilver || false,
+            senderIsAdmin: profile?.isAdmin || msgData.senderIsAdmin || false,
         };
       });
 
@@ -303,6 +303,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderTitle: currentUserProfile.title,
             senderIsShinyGold: currentUserProfile.isShinyGold,
             senderIsShinySilver: currentUserProfile.isShinySilver,
+            senderIsAdmin: currentUserProfile.isAdmin,
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -325,6 +326,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
             senderIsShinySilver: false,
+            senderIsAdmin: false,
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
@@ -344,6 +346,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
             senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             senderIsShinyGold: false,
             senderIsShinySilver: false,
+            senderIsAdmin: false,
           };
           setMessages(prev => [...prev, errorMessage]);
           toast({
@@ -373,17 +376,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global' }: ChatIn
 
     const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
-      senderName: currentUserProfile.displayName, // Use username as displayName
+      senderName: currentUserProfile.displayName,
       senderUsername: currentUserProfile.username,
       senderAvatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
       content,
       timestamp: serverTimestamp(),
       senderIsShinyGold: currentUserProfile.isShinyGold || false,
       senderIsShinySilver: currentUserProfile.isShinySilver || false,
+      senderIsAdmin: currentUserProfile.isAdmin || false,
     };
 
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
-    // Only add nameColor if no shiny effect is active
     if (!currentUserProfile.isShinyGold && !currentUserProfile.isShinySilver && currentUserProfile.nameColor) {
       newMessagePayload.senderNameColor = currentUserProfile.nameColor;
     }

@@ -8,7 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2 } from "lucide-react";
+import { Edit3, Palette, Loader2, User as UserIcon, Users, Camera, Trash2, ShieldCheck } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
@@ -32,17 +32,17 @@ import {
 
 interface UserProfile {
   uid: string;
-  username: string; 
-  displayName: string; 
-  avatar: string; 
-  banner?: string; 
+  username: string;
+  displayName: string; // Remains as username
+  avatar: string;
+  banner?: string;
   bio: string;
   title?: string;
   nameColor?: string;
   isShinyGold?: boolean;
   isShinySilver?: boolean;
   isAdmin?: boolean;
-  friendsCount?: number; 
+  friendsCount?: number;
 }
 
 const MAX_AVATAR_SIZE_BYTES = 500 * 1024; // 500KB
@@ -71,14 +71,14 @@ export default function ProfilePage() {
         setCurrentUser(user);
         setAuthEmail(user.email);
         const userProfileRef = ref(database, 'users/' + user.uid);
-        
+
         const profileListener = onValue(userProfileRef, (profileSnapshot) => {
           const data = profileSnapshot.val();
           if (data) {
             setUserProfile({
               uid: user.uid,
-              username: data.username || (user.email?.split('@')[0] || "User"),
-              displayName: data.displayName || data.username || user.displayName || "User", 
+              username: data.username,
+              displayName: data.username, // Set displayName to username
               avatar: data.avatar || `https://placehold.co/128x128.png?text=${(data.username || "U").substring(0,2).toUpperCase()}`,
               banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
               bio: data.bio || "No bio yet.",
@@ -87,7 +87,7 @@ export default function ProfilePage() {
               isShinyGold: data.isShinyGold || false,
               isShinySilver: data.isShinySilver || false,
               isAdmin: data.isAdmin || false,
-              friendsCount: data.friendsCount || 0, 
+              friendsCount: data.friendsCount || 0,
             });
             setBioEdit(data.bio || "");
           } else {
@@ -95,7 +95,7 @@ export default function ProfilePage() {
             const basicProfile: UserProfile = {
               uid: user.uid,
               username: fallbackUsername,
-              displayName: fallbackUsername, 
+              displayName: fallbackUsername, // Set displayName to username
               avatar: `https://placehold.co/128x128.png?text=${(fallbackUsername).substring(0,2).toUpperCase()}`,
               banner: "https://placehold.co/1200x300.png?text=Banner",
               bio: "New user! Ready to chat.",
@@ -113,7 +113,7 @@ export default function ProfilePage() {
           toast({ title: "Error", description: "Could not fetch profile data.", variant: "destructive"});
           setIsLoading(false);
         });
-        
+
         return () => {
           off(userProfileRef, 'value', profileListener);
         };
@@ -160,8 +160,8 @@ export default function ProfilePage() {
             description: `${imageType === 'avatar' ? 'Avatar' : 'Banner'} image must be less than ${limit}. Please choose a smaller file or resize it.`,
             variant: "destructive",
         });
-        if (avatarInputRef.current) avatarInputRef.current.value = ""; 
-        if (bannerInputRef.current) bannerInputRef.current.value = ""; 
+        if (avatarInputRef.current) avatarInputRef.current.value = "";
+        if (bannerInputRef.current) bannerInputRef.current.value = "";
         return;
     }
 
@@ -232,7 +232,7 @@ export default function ProfilePage() {
       await deleteUser(currentUser);
 
       toast({ title: "Account Deleted", description: "Your account and associated data have been successfully deleted." });
-      router.push('/auth'); 
+      router.push('/auth');
     } catch (error: any) {
       console.error("Error deleting account:", error);
       if (error.code === 'auth/requires-recent-login') {
@@ -267,7 +267,7 @@ export default function ProfilePage() {
       </div>
     );
   }
-  
+
   let userDisplayNameClasses = "text-3xl font-bold font-headline";
   let userDisplayNameStyle = {};
   if (userProfile.isShinyGold) {
@@ -299,20 +299,20 @@ export default function ProfilePage() {
       <input type="file" ref={bannerInputRef} onChange={handleBannerFileChange} accept="image/*" style={{ display: 'none' }} />
 
       <Card className="overflow-hidden shadow-lg">
-        <div className="relative bg-muted h-48 md:h-56"> 
-          <Image 
-            src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
-            alt="Profile banner" 
-            layout="fill" 
-            objectFit="cover" 
-            className="w-full h-full" 
+        <div className="relative bg-muted h-48 md:h-56">
+          <Image
+            src={userProfile.banner || "https://placehold.co/1200x300.png?text=Banner"}
+            alt="Profile banner"
+            layout="fill"
+            objectFit="cover"
+            className="w-full h-full"
             data-ai-hint="abstract banner"
-            key={userProfile.banner} 
+            key={userProfile.banner}
             priority
           />
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             className="absolute top-2 right-2 bg-background/70 hover:bg-background"
             onClick={() => bannerInputRef.current?.click()}
             disabled={isUploadingBanner}
@@ -328,9 +328,9 @@ export default function ProfilePage() {
                 <AvatarImage src={userProfile.avatar} alt={userProfile.username} data-ai-hint="profile picture" key={userProfile.avatar}/>
                 <AvatarFallback className="text-4xl">{userProfile.username?.split(' ').map(n => n[0]).join('') || userProfile.username?.charAt(0) || 'U'}</AvatarFallback>
               </Avatar>
-              <Button 
-                variant="outline" 
-                size="icon" 
+              <Button
+                variant="outline"
+                size="icon"
                 className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
                 onClick={() => avatarInputRef.current?.click()}
                 disabled={isUploadingAvatar}
@@ -339,9 +339,10 @@ export default function ProfilePage() {
                 <span className="sr-only">Change profile picture</span>
               </Button>
             </div>
-            <div className="flex-1 text-center md:text-left pt-4 md:pt-0"> 
+            <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
               <h1 className={cn(userDisplayNameClasses)} style={userDisplayNameStyle}>
-                {userProfile.username} 
+                {userProfile.username}
+                {userProfile.isAdmin && <ShieldCheck className="inline-block ml-2 h-6 w-6 text-destructive" />}
               </h1>
               {userProfile.title && (
                 <p className={cn(userTitleClasses)} style={userTitleStyle}>
@@ -355,7 +356,7 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
-          
+
           <Separator className="my-6" />
 
           <div>
@@ -366,7 +367,7 @@ export default function ProfilePage() {
                 </Button>
             </div>
             {isEditingBio ? (
-                <Textarea 
+                <Textarea
                     value={bioEdit}
                     onChange={(e) => setBioEdit(e.target.value)}
                     placeholder="Tell us about yourself..."
@@ -377,7 +378,7 @@ export default function ProfilePage() {
                 <p className="text-muted-foreground text-sm whitespace-pre-wrap">{userProfile.bio || "No bio provided."}</p>
             )}
           </div>
-          
+
           <Separator className="my-6" />
 
           <div className="space-y-4">

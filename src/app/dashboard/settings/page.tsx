@@ -1,5 +1,5 @@
 
-'use client'; 
+'use client';
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, Info, UserX } from "lucide-react"; // Changed UsersSlash to UserX
+import { Bell, Lock, Palette, Shield, Languages, LogOut, User as UserIcon, KeyRound, UserX } from "lucide-react"; // Removed Info icon
 import { auth, database } from '@/lib/firebase';
 import { onAuthStateChanged, sendPasswordResetEmail, type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
@@ -101,9 +101,9 @@ export default function SettingsPage() {
           </div>
           <div>
             <Label htmlFor="password" className="flex items-center"><KeyRound size={16} className="mr-2 opacity-70" />Password</Label>
-            <Button 
-              variant="outline" 
-              className="w-full md:w-auto" 
+            <Button
+              variant="outline"
+              className="w-full md:w-auto"
               onClick={handlePasswordReset}
               disabled={!currentUser || isLoadingPasswordReset}
             >
@@ -155,7 +155,7 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
-      
+
       {/* Privacy Settings */}
        <Card>
         <CardHeader>
@@ -174,24 +174,13 @@ export default function SettingsPage() {
           <Separator />
           <Link href="/dashboard/settings/blocked-users" passHref>
             <Button variant="outline" className="w-full md:w-auto">
-              <UserX className="mr-2 h-4 w-4" /> Manage Blocked Users 
+              <UserX className="mr-2 h-4 w-4" /> Manage Blocked Users
             </Button>
           </Link>
         </CardContent>
       </Card>
 
-      {/* About Section */}
-      <Card>
-        <CardHeader>
-            <CardTitle className="text-xl flex items-center"><Info className="mr-2 h-5 w-5 text-primary" />About RealTalk</CardTitle>
-        </CardHeader>
-        <CardContent>
-            <Link href="/dashboard/settings/about" passHref>
-                <Button variant="outline" className="w-full md:w-auto">View About Page</Button>
-            </Link>
-        </CardContent>
-      </Card>
-
+      {/* About Section - Removed as it's now a popup in TopNavBar */}
 
       {/* Logout */}
       <Card>

@@ -4,7 +4,7 @@
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX } from 'lucide-react';
+import { Smile, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -23,10 +23,11 @@ export interface Message {
   senderTitle?: string;
   senderIsShinyGold?: boolean;
   senderIsShinySilver?: boolean;
+  senderIsAdmin?: boolean; // Added for admin indicator
   avatar?: string;
   content: string;
-  timestamp: string; 
-  originalTimestamp?: number; 
+  timestamp: string;
+  originalTimestamp?: number;
   isOwnMessage: boolean;
   reactions?: { [key: string]: number };
   imageUrl?: string;
@@ -57,7 +58,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
       toast({ title: "Info", description: "You cannot send a friend request to yourself." });
       return;
     }
-    
+
     const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
     const blockedByTargetSnap = await get(blockedByTargetRef);
     if (blockedByTargetSnap.exists()) {
@@ -101,7 +102,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         toast({ title: "Error", description: "Could not retrieve your username to send the request. Please ensure your profile is complete.", variant: "destructive" });
         return;
       }
-      
+
       const requestPayloadRef = ref(database, `friend_requests/${targetUid}/${currentUser.uid}`);
       await set(requestPayloadRef, {
         senderUsername: currentSenderUsername,
@@ -129,7 +130,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         toast({ title: "Error", description: "You cannot block yourself.", variant: "destructive" });
         return;
     }
-    
+
     toast({
         title: `Blocking @${targetUsername}`,
         description: "This will remove them as a friend and prevent further interaction.",
@@ -139,17 +140,17 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         const updates: { [key: string]: any } = {};
         updates[`/blocked_users/${currentUser.uid}/${targetUid}`] = true;
         updates[`/users_blocked_by/${targetUid}/${currentUser.uid}`] = true;
-        
+
         const areFriendsRef = ref(database, `friends/${currentUser.uid}/${targetUid}`);
         const areFriendsSnap = await get(areFriendsRef);
         const wereFriends = areFriendsSnap.exists();
 
         updates[`/friends/${currentUser.uid}/${targetUid}`] = null;
-        updates[`/friends/${friendUid}/${currentUser.uid}`] = null;
+        updates[`/friends/${targetUid}/${currentUser.uid}`] = null; // Corrected path
 
         updates[`/friend_requests/${currentUser.uid}/${targetUid}`] = null;
         updates[`/friend_requests/${targetUid}/${currentUser.uid}`] = null;
-        
+
         await update(ref(database), updates);
 
         if (wereFriends) {
@@ -166,23 +167,27 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   };
 
   const handleViewUserProfile = (username?: string) => {
-    if (username && message.senderUid !== 'ai-chatbot-uid') {
+    if (username && message.senderUid !== 'ai-chatbot-uid' && message.senderUid !== 'system') {
         router.push(`/dashboard/profile/${username}`);
     } else if (message.senderUid === 'ai-chatbot-uid') {
         toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
+    } else if (message.senderUid === 'system') {
+        toast({ title: "System Message", description: "This is an automated system message."});
     } else {
         toast({ title: "User Info", description: "Cannot navigate to this user's profile."});
     }
   };
 
   const showUserInteractionToast = () => {
-    if (message.isOwnMessage || !message.senderUid || !message.senderUsername || message.senderUid === 'ai-chatbot-uid') {
+    if (message.isOwnMessage || !message.senderUid || !message.senderUsername || message.senderUid === 'ai-chatbot-uid' || message.senderUid === 'system') {
         if (message.senderUid === 'ai-chatbot-uid') {
             toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
+        } else if (message.senderUid === 'system') {
+           toast({ title: "System Message", description: "This is an automated system message."});
         }
         return;
     }
-    
+
     let nameStyleClass = '';
     let nameInlineStyle = {};
     if (message.senderIsShinyGold) {
@@ -199,7 +204,8 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
             <span className={cn(nameStyleClass)} style={nameInlineStyle}>
                 @{message.senderUsername}
             </span>
-            {message.senderTitle && 
+            {message.senderIsAdmin && <ShieldCheck className="inline-block ml-1.5 h-4 w-4 text-destructive" />}
+            {message.senderTitle &&
                 <span className={cn("ml-1.5 text-xs italic", nameStyleClass)} style={nameInlineStyle}>
                     {message.senderTitle}
                 </span>
@@ -225,7 +231,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
 
 
   const renderContent = () => {
-    const parts = message.content.split(/(\s+)/); 
+    const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
       if (part.startsWith('@') && part.length > 1) {
         const mentionedUsername = part.substring(1);
@@ -237,7 +243,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
       }
       if (/^(https?):\/\/[^\s$.?#].[^\s]*$/.test(part)) {
         try {
-            const url = new URL(part); 
+            const url = new URL(part);
             return (
               <a
                 key={index}
@@ -250,7 +256,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
               </a>
             );
         } catch (e) {
-            return part; 
+            return part;
         }
       }
       return part;
@@ -258,7 +264,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-  
+
   let senderNameClassName = message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline";
   let senderNameStyle = {};
   if (message.senderIsShinyGold) {
@@ -285,16 +291,16 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
   return (
     <div
       className={cn(
-        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group', 
-        isContinuation ? 'mt-[2px]' : 'my-1', 
+        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group',
+        isContinuation ? 'mt-[2px]' : 'my-1',
         message.isOwnMessage
           ? 'ml-auto bg-primary/10'
           : `mr-auto border ${showAvatarAndSender ? 'bg-card shadow-sm' : 'bg-card/95'}`,
-        !message.isOwnMessage && isContinuation 
-          ? 'ml-[calc(2rem+0.75rem)] pr-2.5 pb-1 pt-0.5 pl-2.5' 
+        !message.isOwnMessage && isContinuation
+          ? 'ml-[calc(2rem+0.75rem)] pr-2.5 pb-1 pt-0.5 pl-2.5'
           : 'p-2.5',
-        message.isOwnMessage && isContinuation 
-          ? 'pr-2.5 pb-1 pt-0.5 pl-2.5' 
+        message.isOwnMessage && isContinuation
+          ? 'pr-2.5 pb-1 pt-0.5 pl-2.5'
           : '',
       )}
     >
@@ -304,19 +310,20 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
           <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
-      <div className="flex-1 min-w-0"> 
+      <div className="flex-1 min-w-0">
         {showAvatarAndSender && (
           <div className="flex items-center justify-between gap-2">
-           <div className="flex items-baseline gap-1 flex-wrap"> 
+           <div className="flex items-baseline gap-1 flex-wrap">
             <p
                 className={cn("text-xs font-semibold", senderNameClassName)}
                 style={senderNameStyle}
-                onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' ? showUserInteractionToast : undefined}
+                onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' && message.senderUid !== 'system' ? showUserInteractionToast : undefined}
               >
                 {message.sender}
+                 {message.senderIsAdmin && <ShieldCheck className="inline-block ml-1 h-3.5 w-3.5 text-destructive" />}
               </p>
               {message.senderTitle && (
-                <p className={cn(senderTitleClassName)} style={senderTitleStyle}> 
+                <p className={cn(senderTitleClassName)} style={senderTitleStyle}>
                   {message.senderTitle}
                 </p>
               )}
@@ -325,8 +332,8 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation }: Ch
         </div>
         )}
         <div className={cn(
-            "text-sm text-foreground whitespace-pre-wrap break-words", 
-            showAvatarAndSender ? "mt-1" : "mt-0" 
+            "text-sm text-foreground whitespace-pre-wrap break-words",
+            showAvatarAndSender ? "mt-1" : "mt-0"
         )}>
           {renderContent()}
         </div>

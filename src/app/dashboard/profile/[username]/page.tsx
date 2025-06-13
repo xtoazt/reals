@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Palette, Loader2, User as UserIcon, Users, MessageSquare } from "lucide-react";
+import { Palette, Loader2, User as UserIcon, Users, MessageSquare, ShieldCheck } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { auth, database } from '@/lib/firebase';
@@ -22,10 +22,10 @@ import { cn } from '@/lib/utils';
 
 interface UserProfileData {
   uid: string;
-  username: string; 
-  displayName: string; 
-  avatar: string; 
-  banner?: string; 
+  username: string;
+  displayName: string; // Remains as username
+  avatar: string;
+  banner?: string;
   bio: string;
   title?: string;
   nameColor?: string;
@@ -43,13 +43,13 @@ const generateDmChatId = (uid1: string, uid2: string): string => {
 export default function ViewProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
-  const params = useParams(); 
+  const params = useParams();
   const usernameFromParams = typeof params.username === 'string' ? params.username : null;
 
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [viewedUserProfile, setViewedUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [areFriends, setAreFriends] = useState(false);
   const [isLoadingFriendStatus, setIsLoadingFriendStatus] = useState(true);
 
@@ -64,14 +64,14 @@ export default function ViewProfilePage() {
   useEffect(() => {
     if (!usernameFromParams) {
       setIsLoading(false);
-      notFound(); 
+      notFound();
       return;
     }
 
     const fetchProfile = async () => {
       setIsLoading(true);
-      setIsLoadingFriendStatus(true); 
-      setAreFriends(false); 
+      setIsLoadingFriendStatus(true);
+      setAreFriends(false);
 
       try {
         const usernameRef = ref(database, `usernames/${usernameFromParams.toLowerCase()}`);
@@ -86,10 +86,10 @@ export default function ViewProfilePage() {
         }
 
         const uid = usernameSnapshot.val();
-        
+
         if (currentUser && currentUser.uid === uid) {
-          router.replace('/dashboard/profile'); 
-          return; 
+          router.replace('/dashboard/profile');
+          return;
         }
 
         const userProfileRef = ref(database, `users/${uid}`);
@@ -101,7 +101,7 @@ export default function ViewProfilePage() {
           profileData = {
             uid: uid,
             username: data.username,
-            displayName: data.displayName || data.username, 
+            displayName: data.username, // Set displayName to username
             avatar: data.avatar || `https://placehold.co/128x128.png?text=${data.username?.substring(0,2).toUpperCase() || '??'}`,
             banner: data.banner || "https://placehold.co/1200x300.png?text=Banner",
             bio: data.bio || "No bio yet.",
@@ -116,9 +116,9 @@ export default function ViewProfilePage() {
         } else {
           toast({ title: "Profile Data Missing", description: `Could not load full profile for @${usernameFromParams}.`, variant: "destructive" });
           setViewedUserProfile(null);
-          setIsLoading(false); 
+          setIsLoading(false);
           notFound();
-          return; 
+          return;
         }
 
         if (currentUser && profileData && currentUser.uid !== profileData.uid) {
@@ -126,7 +126,7 @@ export default function ViewProfilePage() {
           const friendSnapshot = await get(friendRef);
           setAreFriends(friendSnapshot.exists());
         } else {
-          setAreFriends(false); 
+          setAreFriends(false);
         }
 
       } catch (error) {
@@ -139,13 +139,13 @@ export default function ViewProfilePage() {
       }
     };
 
-    if (currentUser !== undefined) { 
+    if (currentUser !== undefined) {
        fetchProfile();
     }
-  }, [usernameFromParams, toast, router, currentUser]); 
+  }, [usernameFromParams, toast, router, currentUser]);
 
 
-  if (isLoading || currentUser === undefined) { 
+  if (isLoading || currentUser === undefined) {
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -161,7 +161,7 @@ export default function ViewProfilePage() {
       </div>
     );
   }
-  
+
   let userDisplayNameClasses = "text-3xl font-bold font-headline";
   let userDisplayNameStyle = {};
   if (viewedUserProfile.isShinyGold) {
@@ -193,14 +193,14 @@ export default function ViewProfilePage() {
     <div className="space-y-6">
       <Card className="overflow-hidden shadow-lg">
         <div className="relative bg-muted h-48 md:h-56">
-          <Image 
-            src={viewedUserProfile.banner || "https://placehold.co/1200x300.png?text=Banner"} 
-            alt="Profile banner" 
-            layout="fill" 
-            objectFit="cover" 
+          <Image
+            src={viewedUserProfile.banner || "https://placehold.co/1200x300.png?text=Banner"}
+            alt="Profile banner"
+            layout="fill"
+            objectFit="cover"
             className="w-full h-full"
             data-ai-hint="abstract banner"
-            key={viewedUserProfile.banner} 
+            key={viewedUserProfile.banner}
             priority
           />
         </div>
@@ -214,7 +214,8 @@ export default function ViewProfilePage() {
             </div>
             <div className="flex-1 text-center md:text-left pt-4 md:pt-0">
               <h1 className={cn(userDisplayNameClasses)} style={userDisplayNameStyle}>
-                {viewedUserProfile.username} 
+                {viewedUserProfile.username}
+                {viewedUserProfile.isAdmin && <ShieldCheck className="inline-block ml-2 h-6 w-6 text-destructive" />}
               </h1>
               {viewedUserProfile.title && (
                 <p className={cn(userTitleClasses)} style={userTitleStyle}>
@@ -241,8 +242,8 @@ export default function ViewProfilePage() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span tabIndex={0}> 
-                        <Button variant="outline" disabled style={{ pointerEvents: 'none' }}> 
+                      <span tabIndex={0}>
+                        <Button variant="outline" disabled style={{ pointerEvents: 'none' }}>
                           <MessageSquare className="mr-2 h-4 w-4" /> Message @{viewedUserProfile.username}
                         </Button>
                       </span>
@@ -255,7 +256,7 @@ export default function ViewProfilePage() {
               )
             )}
           </div>
-          
+
           <Separator className="my-6" />
 
           <div>
@@ -264,7 +265,7 @@ export default function ViewProfilePage() {
             </div>
             <p className="text-muted-foreground text-sm whitespace-pre-wrap">{viewedUserProfile.bio || "No bio provided."}</p>
           </div>
-          
+
           <Separator className="my-6" />
 
           <div className="space-y-4">

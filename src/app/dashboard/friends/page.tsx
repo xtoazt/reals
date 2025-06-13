@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff, Circle } from "lucide-react"; 
+import { UserPlus, UserCheck, UserX, Search, Loader2, Users, MessageSquare, ShieldOff, Circle, ShieldCheck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect, useCallback } from "react";
@@ -17,31 +17,33 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 interface FriendRequest {
-  id: string; 
+  id: string;
   senderUsername: string;
   senderAvatar?: string;
   senderNameColor?: string;
   senderIsShinyGold?: boolean;
   senderIsShinySilver?: boolean;
+  senderIsAdmin?: boolean; // Added for admin indicator
   timestamp: number;
 }
 
 interface Friend {
-  id: string; 
+  id: string;
   username: string;
-  displayName: string;
+  displayName: string; // Remains username
   avatar?: string;
   nameColor?: string;
   isShinyGold?: boolean;
   isShinySilver?: boolean;
-  isOnline?: boolean; 
+  isAdmin?: boolean; // Added for admin indicator
+  isOnline?: boolean;
   lastChanged?: number;
 }
 
 interface UserProfileData {
     uid: string;
     username: string;
-    displayName: string;
+    displayName: string; // Remains username
     avatar?: string;
     nameColor?: string;
     isShinyGold?: boolean;
@@ -60,13 +62,13 @@ export default function FriendsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
-  
+
   const [friendUsernameToAdd, setFriendUsernameToAdd] = useState('');
   const [isLoadingAddFriend, setIsLoadingAddFriend] = useState(false);
 
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
-  
+
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
 
@@ -81,12 +83,16 @@ export default function FriendsPage() {
       const snapshot = await get(userRef);
       if (snapshot.exists()) {
         const userData = snapshot.val();
-        const profile = { 
-            uid, 
-            ...userData, 
+        const profile = {
+            uid,
+            username: userData.username,
+            displayName: userData.username, // Use username
+            avatar: userData.avatar,
+            nameColor: userData.nameColor,
             isShinyGold: userData.isShinyGold || false,
             isShinySilver: userData.isShinySilver || false,
             isAdmin: userData.isAdmin || false,
+            friendsCount: userData.friendsCount
         };
         setUsersCache(prev => ({...prev, [uid]: profile}));
         return profile;
@@ -120,7 +126,7 @@ export default function FriendsPage() {
       Object.values(presenceListeners).forEach(unsubscribe => unsubscribe());
       setPresenceListeners({});
     };
-  }, [fetchUserProfile, presenceListeners]); 
+  }, [fetchUserProfile, presenceListeners]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -131,7 +137,7 @@ export default function FriendsPage() {
       if (requestsData) {
         const loadedRequests: FriendRequest[] = [];
         for (const senderUid in requestsData) {
-          if (requestsData[senderUid]?.status !== 'pending') continue; 
+          if (requestsData[senderUid]?.status !== 'pending') continue;
           const request = requestsData[senderUid];
           const senderProfile = await fetchUserProfile(senderUid);
           loadedRequests.push({
@@ -141,6 +147,7 @@ export default function FriendsPage() {
             senderNameColor: senderProfile?.nameColor,
             senderIsShinyGold: senderProfile?.isShinyGold || false,
             senderIsShinySilver: senderProfile?.isShinySilver || false,
+            senderIsAdmin: senderProfile?.isAdmin || false,
             timestamp: request.timestamp,
           });
         }
@@ -168,11 +175,11 @@ export default function FriendsPage() {
       const friendsData = snapshot.val();
       Object.keys(presenceListeners).forEach(uid => {
         if (!friendsData || !friendsData[uid]) {
-          presenceListeners[uid](); 
+          presenceListeners[uid]();
           delete presenceListeners[uid];
         }
       });
-      setPresenceListeners(prev => ({...prev})); 
+      setPresenceListeners(prev => ({...prev}));
 
       if (friendsData) {
         const friendUIDs = Object.keys(friendsData);
@@ -182,12 +189,13 @@ export default function FriendsPage() {
             return {
               id: friendUid,
               username: profile.username,
-              displayName: profile.displayName,
+              displayName: profile.displayName, // Already username
               avatar: profile.avatar,
               nameColor: profile.nameColor,
               isShinyGold: profile.isShinyGold || false,
               isShinySilver: profile.isShinySilver || false,
-              isOnline: false, 
+              isAdmin: profile.isAdmin || false,
+              isOnline: false,
             };
           }
           return null;
@@ -201,9 +209,9 @@ export default function FriendsPage() {
             const presenceRef = ref(database, `/presence/${friend.id}`);
             const listener = onValue(presenceRef, (presenceSnap) => {
               const presenceData = presenceSnap.val() as PresenceData | null;
-              setFriends(prevFriends => prevFriends.map(f => 
-                f.id === friend.id 
-                  ? { ...f, isOnline: presenceData?.isOnline || false, lastChanged: presenceData?.lastChanged } 
+              setFriends(prevFriends => prevFriends.map(f =>
+                f.id === friend.id
+                  ? { ...f, isOnline: presenceData?.isOnline || false, lastChanged: presenceData?.lastChanged }
                   : f
               ));
             });
@@ -224,7 +232,7 @@ export default function FriendsPage() {
 
     return () => {
       off(friendsDbRef, 'value', friendsListener);
-      Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe()); 
+      Object.values(newPresenceListeners).forEach(unsubscribe => unsubscribe());
     };
   }, [currentUser, fetchUserProfile, toast]);
 
@@ -258,7 +266,7 @@ export default function FriendsPage() {
         setIsLoadingAddFriend(false);
         return;
       }
-      
+
       const targetUid = usernameSnapshot.val();
 
       const blockedByTargetRef = ref(database, `users_blocked_by/${currentUser.uid}/${targetUid}`);
@@ -320,7 +328,7 @@ export default function FriendsPage() {
       setIsLoadingAddFriend(false);
     }
   };
-  
+
   const handleAcceptRequest = async (senderUid: string, senderUsername: string) => {
     if (!currentUser) return;
 
@@ -345,16 +353,16 @@ export default function FriendsPage() {
 
       updates[`/friends/${currentUser.uid}/${senderUid}`] = friendData;
       updates[`/friends/${senderUid}/${currentUser.uid}`] = friendData;
-      updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null; 
+      updates[`/friend_requests/${currentUser.uid}/${senderUid}`] = null;
 
       const currentUserFriendsCountRef = ref(database, `users/${currentUser.uid}/friendsCount`);
       const senderFriendsCountRef = ref(database, `users/${senderUid}/friendsCount`);
 
-      await update(ref(database), updates); 
+      await update(ref(database), updates);
 
       await runTransaction(currentUserFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
       await runTransaction(senderFriendsCountRef, (currentCount) => (currentCount || 0) + 1);
-      
+
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${senderUsername}.`});
     } catch (error: any) {
       console.error("Error accepting friend request:", error);
@@ -390,7 +398,7 @@ export default function FriendsPage() {
         const updates: { [key: string]: any } = {};
         updates[`/blocked_users/${currentUser.uid}/${friendUid}`] = true;
         updates[`/users_blocked_by/${friendUid}/${currentUser.uid}`] = true;
-        
+
         const areFriendsRef = ref(database, `friends/${currentUser.uid}/${friendUid}`);
         const areFriendsSnap = await get(areFriendsRef);
         const wereFriends = areFriendsSnap.exists();
@@ -400,7 +408,7 @@ export default function FriendsPage() {
 
         updates[`/friend_requests/${currentUser.uid}/${friendUid}`] = null;
         updates[`/friend_requests/${friendUid}/${currentUser.uid}`] = null;
-        
+
         await update(ref(database), updates);
 
         if (wereFriends) {
@@ -416,7 +424,7 @@ export default function FriendsPage() {
         toast({ title: "Error", description: `Could not block user: ${error.message}`, variant: "destructive" });
     }
   };
-  
+
   const handleViewProfile = (username: string) => {
     router.push(`/dashboard/profile/${username}`);
   };
@@ -431,15 +439,15 @@ export default function FriendsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
-            <Input 
-              placeholder="Enter Username to add friend" 
-              className="flex-1" 
+            <Input
+              placeholder="Enter Username to add friend"
+              className="flex-1"
               value={friendUsernameToAdd}
               onChange={(e) => setFriendUsernameToAdd(e.target.value)}
               disabled={isLoadingAddFriend || !currentUser}
             />
             <Button onClick={handleAddFriend} disabled={isLoadingAddFriend || !currentUser || !friendUsernameToAdd.trim()} className="transition-colors">
-              {isLoadingAddFriend ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+              {isLoadingAddFriend ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
               Add Friend
             </Button>
           </div>
@@ -450,8 +458,8 @@ export default function FriendsPage() {
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="all-friends">All Friends ({friends.length})</TabsTrigger>
           <TabsTrigger value="friend-requests">
-            Friend Requests 
-            {friendRequests.length > 0 && 
+            Friend Requests
+            {friendRequests.length > 0 &&
               <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-primary-foreground bg-primary rounded-full">{friendRequests.length}</span>
             }
           </TabsTrigger>
@@ -496,12 +504,13 @@ export default function FriendsPage() {
                          )} />
                         </Avatar>
                         <div className="flex-1">
-                        <p 
-                            className={cn("font-semibold cursor-pointer hover:underline", nameClass)} 
-                            style={nameStyle} 
+                        <p
+                            className={cn("font-semibold cursor-pointer hover:underline", nameClass)}
+                            style={nameStyle}
                             onClick={() => handleViewProfile(friend.username)}
                         >
                             {friend.displayName}
+                            {friend.isAdmin && <ShieldCheck className="inline-block ml-1.5 h-4 w-4 text-destructive" />}
                         </p>
                         <p className="text-xs text-muted-foreground">@{friend.username}</p>
                         <p className={`text-xs ${friend.isOnline ? 'text-green-500' : 'text-muted-foreground'}`}>{friend.isOnline ? 'Online' : 'Offline'}</p>
@@ -558,12 +567,13 @@ export default function FriendsPage() {
                         <AvatarFallback>{request.senderUsername.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p 
-                            className={cn("font-medium cursor-pointer hover:underline", nameClass)} 
-                            style={nameStyle} 
+                        <p
+                            className={cn("font-medium cursor-pointer hover:underline", nameClass)}
+                            style={nameStyle}
                             onClick={() => handleViewProfile(request.senderUsername)}
                         >
                             {request.senderUsername}
+                            {request.senderIsAdmin && <ShieldCheck className="inline-block ml-1.5 h-3.5 w-3.5 text-destructive" />}
                         </p>
                         <p className="text-xs text-muted-foreground">wants to be your friend.</p>
                       </div>
