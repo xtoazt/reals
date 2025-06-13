@@ -279,32 +279,32 @@ export function TopNavBar() {
       </Sheet>
 
       <Link href="/dashboard" className="flex items-center gap-2">
-        <svg 
-          width="28" height="28" 
-          viewBox="0 0 24 24" 
-          fill="none" 
+        <svg
+          width="28" height="28"
+          viewBox="0 0 24 24"
+          fill="none"
           xmlns="http://www.w3.org/2000/svg"
           className="text-primary"
         >
-          <path 
-            d="M12 2 L20 7 L12 12 L4 7 Z" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
+          <path
+            d="M12 2 L18 8 L12 14 L6 8 Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <path 
-            d="M5 10 L12 16 L19 10" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
+          <path
+            d="M6 13 L12 19 L18 13"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <path 
-            d="M7 15 L12 21 L17 15" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
+          <path
+            d="M6 18 L12 24 L18 18"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
