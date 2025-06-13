@@ -59,16 +59,19 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
   useEffect(() => {
     let isMounted = true;
+    let resetTimerId: NodeJS.Timeout | null = null;
 
     const loadFriendsData = async () => {
       if (!currentUser || !isMounted) {
-        setFriendsToDisplay([]);
-        setIsLoadingFriends(false);
+        if (isMounted) {
+            setFriendsToDisplay([]);
+            setIsLoadingFriends(false);
+        }
         return;
       }
 
-      setIsLoadingFriends(true);
-      setFriendsToDisplay([]); // Clear previous list
+      if (isMounted) setIsLoadingFriends(true);
+      if (isMounted) setFriendsToDisplay([]); // Clear previous list
 
       try {
         const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
@@ -77,14 +80,14 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
         if (!friendsData || !isMounted) {
           if (isMounted) setFriendsToDisplay([]);
-          setIsLoadingFriends(false);
+          if (isMounted) setIsLoadingFriends(false);
           return;
         }
 
         const friendUIDs = Object.keys(friendsData);
         if (friendUIDs.length === 0 && isMounted) {
-          setFriendsToDisplay([]);
-          setIsLoadingFriends(false);
+          if (isMounted) setFriendsToDisplay([]);
+          if (isMounted) setIsLoadingFriends(false);
           return;
         }
         
@@ -119,7 +122,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
             fetchedFriends.push(result.value);
           }
         });
-        setFriendsToDisplay(fetchedFriends);
+        if (isMounted) setFriendsToDisplay(fetchedFriends);
 
       } catch (error) {
         console.error("Error loading friends data for GC dialog:", error);
@@ -135,18 +138,31 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     };
 
     if (isOpen) {
-      loadFriendsData();
+      if (currentUser) {
+        loadFriendsData();
+      } else {
+        // Dialog opened, but no user yet. Clear lists, handle loading state.
+        setFriendsToDisplay([]);
+        setIsLoadingFriends(true); // Or false depending on desired UX
+      }
     } else {
-      // Reset states when dialog is closed
-      setGCName('');
-      setSelectedFriends([]);
-      setFriendsToDisplay([]);
-      setIsLoadingFriends(false);
-      setIsCreatingGC(false);
+      // Reset states when dialog is closed and component is still mounted
+      resetTimerId = setTimeout(() => {
+        if (isMounted) {
+          setGCName('');
+          setSelectedFriends([]);
+          setFriendsToDisplay([]);
+          setIsLoadingFriends(false);
+          setIsCreatingGC(false);
+        }
+      }, 0);
     }
 
     return () => {
       isMounted = false;
+      if (resetTimerId) {
+        clearTimeout(resetTimerId);
+      }
     };
   }, [isOpen, currentUser, toast]);
 
