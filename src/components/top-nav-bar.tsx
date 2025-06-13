@@ -291,7 +291,7 @@ export function TopNavBar() {
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
                   I just made this so that people wouldn't have to use a Google Doc to talk or risk silent lunch lol.
                   {"\n\n"}
-                  My username is rohan., anyone else is a fake.
+                  My username is <strong>rohan_</strong>, anyone else is a fake.
                   {"\n\n"}
                   please contact me about any errors or requests you have
                   {"\n\n"}
