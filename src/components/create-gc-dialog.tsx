@@ -50,6 +50,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
 
+  // Effect to get current user
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -57,25 +58,27 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     return () => unsubscribeAuth();
   }, []);
 
+  // Effect to load friends when dialog opens
   useEffect(() => {
     let isMounted = true;
 
-    const loadFriendsAndProfiles = async () => {
-      if (!currentUser) {
+    const loadFriendsData = async () => {
+      if (!isMounted || !currentUser?.uid) {
         if (isMounted) {
-          setFriendsToDisplay([]);
-          setIsLoadingFriends(false);
+            setFriendsToDisplay([]); // Clear if no user
+            setIsLoadingFriends(false);
         }
         return;
       }
 
       if (isMounted) {
-        setIsLoadingFriends(true);
-        // Reset gcName and selectedFriends when dialog opens and user is available
+        // Reset form states for a fresh dialog instance if it was somehow kept open
+        // Though conditional rendering of DialogContent makes this less critical for these states
         setGCName('');
         setSelectedFriends([]);
         setIsCreatingGC(false);
-        setFriendsToDisplay([]); // Clear previous list immediately
+        setFriendsToDisplay([]); // Clear previous list before loading
+        setIsLoadingFriends(true);
       }
 
       try {
@@ -134,29 +137,23 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       }
     };
 
-    if (isOpen && currentUser?.uid) { // Check currentUser.uid for dependency stability
-      loadFriendsAndProfiles();
-    } else if (!isOpen && isMounted) {
-      // Clear states when dialog closes or there's no user
-      setGCName('');
-      setSelectedFriends([]);
-      setFriendsToDisplay([]);
-      setIsLoadingFriends(false);
-      setIsCreatingGC(false);
+    if (isOpen && currentUser?.uid) {
+      loadFriendsData();
     }
+    // No explicit state reset here for !isOpen, as DialogContent unmount will handle it.
 
     return () => {
       isMounted = false;
     };
-  }, [isOpen, currentUser?.uid, toast]); // Changed dependency to currentUser?.uid
+  }, [isOpen, currentUser?.uid, toast]); // currentUser.uid for stability
 
 
-  const handleOpenChange = (openValue: boolean) => {
+  const handleDialogOnOpenChange = (openValue: boolean) => {
     setIsOpen(openValue);
-    // State resets for gcName, selectedFriends, etc., are now primarily handled by the useEffect based on `isOpen`
+    // No explicit state resets here, conditional rendering of DialogContent handles it.
   };
 
-  const handleSelectFriend = (friendId: string) => {
+  const handleSelectFriendInForm = (friendId: string) => {
     if (isCreatingGC) return; 
     setSelectedFriends((prevSelected) =>
       prevSelected.includes(friendId)
@@ -216,35 +213,22 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         description: `"${gcName}" is ready.`,
       });
 
-      handleOpenChange(false); 
+      handleDialogOnOpenChange(false); 
       router.push(`/dashboard/chat/${newGCId}`);
     } catch (error) {
       console.error("Error creating GC:", error);
       toast({ title: 'Error', description: 'Could not create Group Chat.', variant: 'destructive' });
     } finally {
-      if (isMounted) { // Ensure component is still mounted before setting state
-        setIsCreatingGC(false);
-      }
+      // setIsCreatingGC(false); // This will be reset by DialogContent unmount/remount
     }
   };
   
-  // Need to define isMounted for the finally block in handleSubmit
-  // This is a bit tricky as handleSubmit is not in useEffect.
-  // For simplicity, we'll assume if handleSubmit starts, component is mounted.
-  // A more robust solution might involve a ref for isMounted if needed here.
-  let isMounted = true; 
-  useEffect(() => {
-    isMounted = true;
-    return () => { isMounted = false; };
-  }, []);
-
-
   const getAvatarFallbackText = (displayName?: string) => {
     return displayName ? displayName.charAt(0).toUpperCase() : 'U';
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOnOpenChange}>
       {children ? (
         <DialogTrigger asChild>{children}</DialogTrigger>
       ) : (
@@ -254,79 +238,81 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-[480px]">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center"><MessageSquareText className="mr-2 h-5 w-5" />Create New Group Chat</DialogTitle>
-            <DialogDescription>
-              Give your GC a name and invite your friends to chat.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 py-6">
-            <div className="space-y-2">
-              <Label htmlFor="gcName">GC Name</Label>
-              <Input
-                id="gcName"
-                value={gcName}
-                onChange={(e) => setGCName(e.target.value)}
-                placeholder="E.g., Weekend Hangout"
-                required
-                disabled={isCreatingGC}
-              />
+      {isOpen && ( // Conditionally render DialogContent
+        <DialogContent className="sm:max-w-[480px]">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center"><MessageSquareText className="mr-2 h-5 w-5" />Create New Group Chat</DialogTitle>
+              <DialogDescription>
+                Give your GC a name and invite your friends to chat.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-6">
+              <div className="space-y-2">
+                <Label htmlFor="gcName-dialog">GC Name</Label> 
+                <Input
+                  id="gcName-dialog" // Changed id to avoid conflict if multiple dialogs exist
+                  value={gcName}
+                  onChange={(e) => setGCName(e.target.value)}
+                  placeholder="E.g., Weekend Hangout"
+                  required
+                  disabled={isCreatingGC}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Invite Friends ({selectedFriends.length} selected)</Label>
+                <ScrollArea className="h-[200px] w-full rounded-md border">
+                  {isLoadingFriends ? (
+                    <div className="flex justify-center items-center h-full">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : friendsToDisplay.length > 0 ? (
+                    <div className="p-2 space-y-1">
+                      {friendsToDisplay.map((friend) => (
+                        <div
+                          key={friend.id}
+                          className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted has-[button:focus-visible]:bg-muted has-[:checked]:bg-primary/10"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleSelectFriendInForm(friend.id)}
+                          onKeyDown={(e) => { if (!isCreatingGC && (e.key === ' ' || e.key === 'Enter')) handleSelectFriendInForm(friend.id); }}
+                        >
+                          <Checkbox
+                            id={`friend-dialog-${friend.id}`} // Changed id
+                            checked={selectedFriends.includes(friend.id)}
+                            aria-labelledby={`friend-label-dialog-${friend.id}`} // Changed id
+                            disabled={isCreatingGC || isLoadingFriends}
+                          />
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
+                            <AvatarFallback>{getAvatarFallbackText(friend.displayName)}</AvatarFallback>
+                          </Avatar>
+                          <label id={`friend-label-dialog-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                            {friend.displayName || "Unnamed User"} <span className="text-xs text-muted-foreground">(@{friend.username || "unknown"})</span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground p-4 text-center">
+                      {(currentUser && friendsToDisplay.length === 0 && !isLoadingFriends) ? "You have no friends to invite yet." : "Loading friends or none to display."}
+                    </p>
+                  )}
+                </ScrollArea>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Invite Friends ({selectedFriends.length} selected)</Label>
-              <ScrollArea className="h-[200px] w-full rounded-md border">
-                {isLoadingFriends ? (
-                  <div className="flex justify-center items-center h-full">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : friendsToDisplay.length > 0 ? (
-                  <div className="p-2 space-y-1">
-                    {friendsToDisplay.map((friend) => (
-                      <div
-                        key={friend.id}
-                        className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted has-[button:focus-visible]:bg-muted has-[:checked]:bg-primary/10"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleSelectFriend(friend.id)}
-                        onKeyDown={(e) => { if (!isCreatingGC && (e.key === ' ' || e.key === 'Enter')) handleSelectFriend(friend.id); }}
-                      >
-                        <Checkbox
-                          id={`friend-${friend.id}`}
-                          checked={selectedFriends.includes(friend.id)}
-                          aria-labelledby={`friend-label-${friend.id}`}
-                          disabled={isCreatingGC || isLoadingFriends}
-                        />
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
-                          <AvatarFallback>{getAvatarFallbackText(friend.displayName)}</AvatarFallback>
-                        </Avatar>
-                        <label id={`friend-label-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                          {friend.displayName || "Unnamed User"} <span className="text-xs text-muted-foreground">(@{friend.username || "unknown"})</span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground p-4 text-center">
-                    {(currentUser && friendsToDisplay.length === 0 && !isLoadingFriends) ? "You have no friends to invite yet." : "Loading friends or none to display."}
-                  </p>
-                )}
-              </ScrollArea>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isCreatingGC}>Cancel</Button>
-            </DialogClose>
-            <Button type="submit" disabled={!gcName.trim() || isLoadingFriends || isCreatingGC}>
-              {isCreatingGC ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Create GC
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" disabled={isCreatingGC}>Cancel</Button>
+              </DialogClose>
+              <Button type="submit" disabled={!gcName.trim() || isLoadingFriends || isCreatingGC}>
+                {isCreatingGC ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Create GC
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }
