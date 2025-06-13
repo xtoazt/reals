@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText, Info, UserPlus } from 'lucide-react'; // Added UserPlus
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText, Info, UserPlus } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -75,6 +75,8 @@ export function TopNavBar() {
   const [userProfileData, setUserProfileData] = useState<UserProfileData | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  const [rawFriendRequestsData, setRawFriendRequestsData] = useState<{ [senderUid: string]: RawFriendRequest } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
 
@@ -110,43 +112,53 @@ export function TopNavBar() {
         });
       } else {
         setUserProfileData(null);
+        setRawFriendRequestsData(null); // Clear raw data on logout
         setNotifications([]);
+        setReadNotificationIds(new Set());
       }
     });
     return () => unsubscribeAuth();
   }, []);
 
+  // Effect 1: Fetch raw friend requests from Firebase
   useEffect(() => {
     if (!currentUser) {
-        setNotifications([]);
-        return;
+      setRawFriendRequestsData(null);
+      return;
     }
 
-    const friendRequestsRef = ref(database, `friend_requests/${currentUser.uid}`);
-    const listener = onValue(friendRequestsRef, (snapshot) => {
-        const requestsData = snapshot.val() as { [senderUid: string]: RawFriendRequest } | null;
-        const newNotifications: AppNotification[] = [];
-        if (requestsData) {
-            Object.entries(requestsData).forEach(([senderUid, request]) => {
-                if (request.status === 'pending') {
-                    newNotifications.push({
-                        id: senderUid,
-                        title: 'New Friend Request',
-                        description: `${request.senderUsername} wants to be your friend.`,
-                        timestamp: request.timestamp,
-                        link: '/dashboard/friends?tab=friend-requests',
-                        read: readNotificationIds.has(senderUid),
-                        icon: UserPlus,
-                        type: 'friend_request',
-                    });
-                }
-            });
-        }
-        setNotifications(newNotifications.sort((a, b) => b.timestamp - a.timestamp));
+    const friendRequestsRefPath = `friend_requests/${currentUser.uid}`;
+    const friendRequestsRefHandle = ref(database, friendRequestsRefPath);
+    
+    const listener = onValue(friendRequestsRefHandle, (snapshot) => {
+      setRawFriendRequestsData(snapshot.val());
     });
 
-    return () => off(friendRequestsRef, 'value', listener);
-  }, [currentUser, readNotificationIds]);
+    return () => off(friendRequestsRefHandle, 'value', listener);
+  }, [currentUser]);
+
+  // Effect 2: Process raw data and readNotificationIds to update final `notifications` state
+  useEffect(() => {
+    const newProcessedNotifications: AppNotification[] = [];
+    if (rawFriendRequestsData) {
+      Object.entries(rawFriendRequestsData).forEach(([senderUid, request]) => {
+        if (request.status === 'pending') {
+          newProcessedNotifications.push({
+            id: senderUid, // Using senderUid as notification ID for friend requests
+            title: 'New Friend Request',
+            description: `${request.senderUsername} wants to be your friend.`,
+            timestamp: request.timestamp,
+            link: '/dashboard/friends?tab=friend-requests',
+            read: readNotificationIds.has(senderUid), // Apply read status
+            icon: UserPlus,
+            type: 'friend_request',
+          });
+        }
+      });
+    }
+    // Sort and set the final notifications list
+    setNotifications(newProcessedNotifications.sort((a, b) => b.timestamp - a.timestamp));
+  }, [rawFriendRequestsData, readNotificationIds]);
 
 
   const handleLogout = async () => {
@@ -183,15 +195,32 @@ export function TopNavBar() {
 
   const markNotificationAsRead = useCallback((id: string) => {
     setReadNotificationIds(prev => new Set(prev).add(id));
-     setNotifications(prevNots => prevNots.map(n => n.id === id ? {...n, read: true} : n));
   }, []);
 
   const clearAllNotifications = useCallback(() => {
-    const idsToMarkRead = notifications.map(n => n.id);
-    setReadNotificationIds(prev => new Set([...prev, ...idsToMarkRead]));
-    setNotifications(prevNots => prevNots.map(n => ({...n, read: true})));
-    toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
-  }, [notifications]);
+    const idsToMarkReadFromRaw = new Set<string>();
+    if (rawFriendRequestsData) {
+      Object.keys(rawFriendRequestsData).forEach(senderUid => {
+        if (rawFriendRequestsData[senderUid]?.status === 'pending') {
+          idsToMarkReadFromRaw.add(senderUid);
+        }
+      });
+    }
+    // Add other notification type IDs here if they exist
+
+    if (idsToMarkReadFromRaw.size > 0) {
+      setReadNotificationIds(prev => new Set([...prev, ...idsToMarkReadFromRaw]));
+      toast({title: "Notifications Cleared", description: "All current notifications marked as read."});
+    } else {
+      // Only toast if there were no notifications to begin with, or if they were already read.
+      // This logic could be refined if we know if `notifications` array was empty due to all being read vs none existing.
+       if(notifications.length === 0) {
+         toast({title: "No Notifications", description: "No pending notifications to clear."});
+       } else {
+         toast({title: "Notifications Already Read", description: "All notifications were already marked as read."});
+       }
+    }
+  }, [rawFriendRequestsData, notifications, toast]); // notifications added for the else condition
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
@@ -251,7 +280,7 @@ export function TopNavBar() {
 
       <Link href="/dashboard" className="flex items-center gap-2">
          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-primary">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+            <path d="M2 2 L22 12 L2 22 L7 12 L2 2 Z" fill="hsl(var(--primary))"></path>
           </svg>
         <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
       </Link>
@@ -412,3 +441,5 @@ export function TopNavBar() {
     </header>
   );
 }
+
+    
