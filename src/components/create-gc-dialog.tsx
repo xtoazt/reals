@@ -54,65 +54,79 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
 
   const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
     setIsOpen(openValue);
-  }, [setIsOpen]); // setIsOpen is stable from useState
+  }, []); // setIsOpen is stable
 
   useEffect(() => {
-    if (isOpen && propsCurrentUser?.uid) {
-      // Reset all relevant states for a fresh dialog instance FIRST
+    if (isOpen) {
+      // Reset form states for a fresh dialog instance
       setGCName('');
       setSelectedFriends([]);
-      setIsCreatingGC(false);
-      setFriendsToDisplay([]); 
-      setIsLoadingFriends(true);
+      setIsCreatingGC(false); 
 
-      const loadInitialDataForDialog = async () => {
-        try {
-          const friendsDbRef = ref(database, `friends/${propsCurrentUser.uid}`);
-          const friendsSnapshot = await get(friendsDbRef);
-          const friendsData = friendsSnapshot.val();
+      // Reset friend list states
+      setFriendsToDisplay([]); // Clear previous list
+      setIsLoadingFriends(true); // Set loading state
 
-          if (!friendsData || Object.keys(friendsData).length === 0) {
-            setFriendsToDisplay([]);
-            setIsLoadingFriends(false);
-            return;
-          }
+      if (propsCurrentUser?.uid) {
+        const loadFriends = async () => {
+          try {
+            const friendsDbRef = ref(database, `friends/${propsCurrentUser.uid}`);
+            const friendsSnapshot = await get(friendsDbRef);
+            const friendsData = friendsSnapshot.val();
 
-          const friendUIDs = Object.keys(friendsData);
-          const fetchedFriendsList: Friend[] = [];
-
-          for (const uid of friendUIDs) {
-            try {
-              const userRefDb = ref(database, `users/${uid}`);
-              const userSnapshot = await get(userRefDb);
-              if (userSnapshot.exists()) {
-                const userData = userSnapshot.val();
-                fetchedFriendsList.push({
-                  id: uid,
-                  username: userData.username || "unknown_user",
-                  displayName: userData.displayName || userData.username || "Unknown User",
-                  avatar: userData.avatar,
-                  nameColor: userData.nameColor,
-                });
+            if (friendsData && Object.keys(friendsData).length > 0) {
+              const friendUIDs = Object.keys(friendsData);
+              const fetchedFriendsPromises = friendUIDs.map(async (uid) => {
+                const userRefDb = ref(database, `users/${uid}`);
+                const userSnapshot = await get(userRefDb);
+                if (userSnapshot.exists()) {
+                  const userData = userSnapshot.val();
+                  return {
+                    id: uid,
+                    username: userData.username || "unknown_user",
+                    displayName: userData.displayName || userData.username || "Unknown User",
+                    avatar: userData.avatar,
+                    nameColor: userData.nameColor,
+                  };
+                }
+                return null;
+              });
+              const fetchedFriendsList = (await Promise.all(fetchedFriendsPromises)).filter(f => f !== null) as Friend[];
+              if (isOpen) { // Check if dialog is still open before setting state
+                setFriendsToDisplay(fetchedFriendsList);
               }
-            } catch (fetchError) {
-              console.error(`Error fetching user profile for ${uid} in GC dialog:`, fetchError);
+            } else {
+              if (isOpen) {
+                setFriendsToDisplay([]);
+              }
+            }
+          } catch (error) {
+            console.error("Error loading friends data for GC dialog:", error);
+            if (isOpen) {
+              toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
+              setFriendsToDisplay([]);
+            }
+          } finally {
+            if (isOpen) { // Check if dialog is still open
+              setIsLoadingFriends(false);
             }
           }
-          setFriendsToDisplay(fetchedFriendsList);
-        } catch (error) {
-          console.error("Error loading friends data for GC dialog:", error);
-          toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
+        };
+        loadFriends();
+      } else {
+        // No current user, or UID is missing
+        if (isOpen) {
           setFriendsToDisplay([]);
-        } finally {
           setIsLoadingFriends(false);
         }
-      };
-
-      loadInitialDataForDialog();
+      }
+    } else {
+      // Dialog is closed, ensure loading is false. Other states reset when DialogContent unmounts.
+      if (!isOpen && isLoadingFriends) { // Only set if it was true and now dialog is closing
+         setIsLoadingFriends(false);
+      }
     }
-    // No cleanup needed to reset states if isOpen becomes false, as DialogContent unmounts
-  }, [isOpen, propsCurrentUser?.uid, toast]); // Removed handleDialogOnOpenChange and handleSelectFriendInForm from dependencies
-
+  }, [isOpen, propsCurrentUser?.uid, toast]); // toast is included as it's used in the effect.
 
   const handleSelectFriendInForm = useCallback((friendId: string) => {
     if (isCreatingGC) return; 
@@ -183,7 +197,6 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
         }
       });
 
-
       toast({
         title: 'Group Chat Created!',
         description: `"${gcName}" is ready.`,
@@ -225,9 +238,9 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
             </DialogHeader>
             <div className="grid gap-6 py-6">
               <div className="space-y-2">
-                <Label htmlFor="gcName-dialog-unique-input">GC Name</Label> 
+                <Label htmlFor="gcName-dialog-unique-input-final">GC Name</Label> 
                 <Input
-                  id="gcName-dialog-unique-input" // Unique ID for input
+                  id="gcName-dialog-unique-input-final" 
                   value={gcName}
                   onChange={(e) => setGCName(e.target.value)}
                   placeholder="E.g., Weekend Hangout"
@@ -254,17 +267,17 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
                           onKeyDown={(e) => { if (!isCreatingGC && (e.key === ' ' || e.key === 'Enter')) handleSelectFriendInForm(friend.id); }}
                         >
                           <Checkbox
-                            id={`friend-dialog-unique-checkbox-${friend.id}`} 
+                            id={`friend-dialog-final-checkbox-${friend.id}`} 
                             checked={selectedFriends.includes(friend.id)}
-                            aria-labelledby={`friend-label-dialog-unique-${friend.id}`} // Unique aria-labelledby
+                            aria-labelledby={`friend-label-dialog-final-${friend.id}`} 
                             disabled={isCreatingGC || isLoadingFriends}
-                            onCheckedChange={() => handleSelectFriendInForm(friend.id)} // onCheckedChange preferred for Checkbox
+                            onCheckedChange={() => handleSelectFriendInForm(friend.id)} 
                           />
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
                             <AvatarFallback>{getAvatarFallbackText(friend.displayName)}</AvatarFallback>
                           </Avatar>
-                          <label id={`friend-label-dialog-unique-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                          <label id={`friend-label-dialog-final-${friend.id}`} className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
                             {friend.displayName || "Unnamed User"} <span className="text-xs text-muted-foreground">(@{friend.username || "unknown"})</span>
                           </label>
                         </div>

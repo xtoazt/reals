@@ -73,8 +73,8 @@
           }
         },
         "$messageId": {
-          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
-          "senderUid": { ".validate": "newData.isString() && ((!data.exists() && newData.val() === auth.uid) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
+          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system')) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
+          "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
           "senderAvatar": { ".validate": "newData.isString()" },
@@ -163,3 +163,4 @@
     }
   }
 }
+    
