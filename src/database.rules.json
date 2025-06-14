@@ -42,10 +42,10 @@
             ".validate": "$chatId.contains('gc-') && newData.isBoolean() && newData.val() === true"
           }
         },
-        "messages": { 
-          ".indexOn": ["timestamp"], 
+        "messages": {
+          ".indexOn": ["timestamp"],
           "$messageId": {
-            ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
+            ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system')) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val()))",
             "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
             "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -57,7 +57,7 @@
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
             "timestamp": { ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
             "reactions": {
-              "$reactionType": { 
+              "$reactionType": {
                 "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
                 "users": {
                   "$userId": {
@@ -73,7 +73,7 @@
           }
         },
         "$messageId": {
-          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system')) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
+          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system')) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val()))",
           "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -85,7 +85,7 @@
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
           "timestamp": { ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
           "reactions": {
-            "$reactionType": { 
+            "$reactionType": {
               "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
               "users": {
                 "$userId": {
