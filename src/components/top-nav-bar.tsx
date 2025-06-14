@@ -327,13 +327,13 @@ export function TopNavBar() {
               <div className="space-y-2">
                 <h4 className="font-medium leading-none">About RealTalk</h4>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                  I just made this so that people wouldn't have to use a Google Doc to talk or risk silent lunch lol.
+                  I just made this so that people wouldn&apos;t have to use a Google Doc to talk or risk silent lunch lol.
                   {"\\n\\n"}
                   My username is <strong>rohan_</strong>, anyone else is a fake.
                   {"\\n\\n"}
                   please contact me about any errors or requests you have
                   {"\\n\\n"}
-                  also don't worry about this getting blocked, making new links is actually so easy
+                  also don&apos;t worry about this getting blocked, making new links is actually so easy
                   {"\\n\\n"}
                   (so can you share this now)
                 </p>
@@ -453,4 +453,3 @@ export function TopNavBar() {
     </header>
   );
 }
-
