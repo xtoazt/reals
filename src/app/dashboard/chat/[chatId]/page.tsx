@@ -32,14 +32,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const unwrappedChatId = params.chatId;
 
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined); // undefined: auth not resolved, null: logged out, User: logged in
   const [authResolved, setAuthResolved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Covers auth and chat data loading
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
-  const [canAccessChat, setCanAccessChat] = useState(false);
+  const [canAccessChat, setCanAccessChat] = useState(false); // Gate for rendering ChatInterface
 
   useEffect(() => {
     setResolvedChatId(unwrappedChatId);
@@ -47,22 +47,23 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+      setCurrentUser(user); // user is FirebaseUser or null
       setAuthResolved(true);
     });
     return () => unsubscribe();
-  }, []);
+  }, []); // Runs once on mount
 
   useEffect(() => {
     const performChatSetup = async () => {
-      setIsLoading(true); // Always start with loading true for this effect
-      setCanAccessChat(false); // Reset access before any evaluation
+      setCanAccessChat(false); // Reset access for this evaluation run
 
       if (!authResolved) {
-        // Auth state not yet known, isLoading remains true.
-        // setCanAccessChat is already false.
+        setIsLoading(true); // Auth still resolving, ensure loading is true
         return;
       }
+
+      // Auth is resolved. currentUser is either User object or null.
+      setIsLoading(true); // Start loading for this specific setup run
 
       let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
       if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
@@ -78,7 +79,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       let titleToSet = '';
       let typeToSet = determinedInitialType;
       let anonymousModeToSet = false;
-      let finalCanAccess = false; // Default to no access
+      let finalCanAccess = false; 
 
       if (currentUser === null) { // User is definitively logged out
         if (determinedInitialType === 'ai') {
@@ -91,19 +92,19 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
             // finalCanAccess remains false
         }
       } else if (currentUser) { // CurrentUser is a valid FirebaseUser object (logged in)
-        if (resolvedChatId === 'global') {
-          titleToSet = 'Global Chat'; typeToSet = 'global'; finalCanAccess = true;
-        } else if (resolvedChatId === 'global-unblocked') {
-          titleToSet = 'Unblocked Chat'; typeToSet = 'global'; finalCanAccess = true;
-        } else if (resolvedChatId === 'global-school') {
-          titleToSet = 'School Chat'; typeToSet = 'global'; finalCanAccess = true;
-        } else if (resolvedChatId === 'global-anonymous') {
-          titleToSet = 'Anonymous Chat'; typeToSet = 'global'; anonymousModeToSet = true; finalCanAccess = true;
-        } else if (resolvedChatId === 'global-support') {
-          titleToSet = 'Support Chat'; typeToSet = 'global'; finalCanAccess = true;
-        } else if (resolvedChatId === 'ai-chatbot') {
+        if (determinedInitialType === 'global') { // Covers all global variants
+          titleToSet = 
+            resolvedChatId === 'global' ? 'Global Chat' :
+            resolvedChatId === 'global-unblocked' ? 'Unblocked Chat' :
+            resolvedChatId === 'global-school' ? 'School Chat' :
+            resolvedChatId === 'global-anonymous' ? 'Anonymous Chat' :
+            resolvedChatId === 'global-support' ? 'Support Chat' : 'Chat';
+          typeToSet = 'global';
+          anonymousModeToSet = resolvedChatId === 'global-anonymous';
+          finalCanAccess = true;
+        } else if (determinedInitialType === 'ai') {
           titleToSet = 'AI Chatbot'; typeToSet = 'ai'; finalCanAccess = true;
-        } else if (resolvedChatId?.startsWith('dm_')) {
+        } else if (determinedInitialType === 'dm') {
           typeToSet = 'dm';
           const uids = resolvedChatId.substring(3).split('_');
           const otherUserId = uids.find(uid => uid !== currentUser.uid);
@@ -117,18 +118,15 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 finalCanAccess = true;
               } else {
                 titleToSet = 'Chat with User (Not Found)';
-                // finalCanAccess remains false
               }
             } catch (error) {
               console.error("Error fetching DM user profile:", error);
               titleToSet = 'Error Loading DM';
-              // finalCanAccess remains false
             }
           } else {
             titleToSet = "Invalid DM Chat";
-            // finalCanAccess remains false
           }
-        } else if (resolvedChatId?.startsWith('gc-')) {
+        } else if (determinedInitialType === 'gc') {
           typeToSet = 'gc';
           try {
             const gcRef = ref(database, `chats/${resolvedChatId}`);
@@ -140,37 +138,34 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 finalCanAccess = true;
               } else {
                 titleToSet = "Access Denied to Group Chat";
-                // finalCanAccess remains false
               }
             } else {
               titleToSet = "Group Chat Not Found";
-              // finalCanAccess remains false
             }
           } catch (error) {
             console.error("Error fetching GC details:", error);
             titleToSet = "Error Loading Group Chat";
-            // finalCanAccess remains false
           }
         } else {
           titleToSet = "Invalid Chat ID";
-          // finalCanAccess remains false
         }
       }
-      // If currentUser is undefined (auth still resolving), finalCanAccess remains false and isLoading is true.
+      // If currentUser is still undefined (technically shouldn't happen if authResolved is true,
+      // but as a defensive measure), finalCanAccess remains false.
 
       setChatTitle(titleToSet);
       setChatType(typeToSet);
       setIsAnonymousMode(anonymousModeToSet);
       setCanAccessChat(finalCanAccess);
-      setIsLoading(false); // Set loading false after all checks and async operations complete
+      setIsLoading(false); 
     };
 
     performChatSetup();
 
-  }, [resolvedChatId, currentUser, authResolved, router]); // router was missing, though less critical for this logic
+  }, [resolvedChatId, currentUser, authResolved, router]);
 
 
-  if (isLoading || !authResolved) { // Combined loading condition
+  if (isLoading || !authResolved) { 
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -204,7 +199,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
         currentUser={currentUser} 
-        authResolved={authResolved} // Pass authResolved to ensure ChatInterface also respects it
+        authResolved={authResolved} 
       />
     </div>
   );
