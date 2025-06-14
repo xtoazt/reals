@@ -194,6 +194,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   return (
      <div className="h-full max-h-[calc(100vh-57px-2rem)] md:max-h-[calc(100vh-57px-3rem)]">
       <ChatInterface
+        key={`${resolvedChatId}-${currentUser?.uid || 'loggedout'}`}
         chatTitle={chatTitle}
         chatType={chatType}
         chatId={resolvedChatId}
