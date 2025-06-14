@@ -21,9 +21,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2, MessageSquareText, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { auth, database } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { database, auth } from '@/lib/firebase'; // auth is only needed for FirebaseUser type
+import { type User as FirebaseUser } from 'firebase/auth';
 import { ref, get, serverTimestamp, set, push } from 'firebase/database';
+import type { TopNavBarUserProfileData } from './top-nav-bar'; // Import type from TopNavBar
+
 
 interface Friend {
   id: string;
@@ -33,57 +35,26 @@ interface Friend {
   nameColor?: string;
 }
 
-interface UserProfileData { // For current user's profile context
-    uid: string;
-    username: string;
-    displayName: string;
-}
-
 interface CreateGCDialogProps {
   children?: React.ReactNode;
+  currentUser: FirebaseUser | null; // Received from TopNavBar
+  currentUserProfile: TopNavBarUserProfileData | null; // Received from TopNavBar
 }
 
-export function CreateGCDialog({ children }: CreateGCDialogProps) {
+export function CreateGCDialog({ children, currentUser, currentUserProfile }: CreateGCDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [gcName, setGCName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const { toast } = useToast();
   const router = useRouter();
-
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
 
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        try {
-            const userProfileRef = ref(database, `users/${user.uid}`);
-            const snapshot = await get(userProfileRef);
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                setCurrentUserProfile({
-                    uid: user.uid,
-                    username: data.username,
-                    displayName: data.displayName || data.username || "User",
-                });
-            } else {
-                 setCurrentUserProfile({ uid: user.uid, username: user.email?.split('@')[0] || "user", displayName: user.displayName || user.email?.split('@')[0] || "User" });
-            }
-        } catch (error) {
-            console.error("Failed to fetch current user profile for GC dialog:", error);
-            setCurrentUserProfile({ uid: user.uid, username: user.email?.split('@')[0] || "user", displayName: user.displayName || user.email?.split('@')[0] || "User" });
-        }
-      } else {
-        setCurrentUserProfile(null);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
+  const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
+    setIsOpen(openValue);
+  }, [setIsOpen]); // setIsOpen is stable
 
   // Effect to load data and reset state when dialog opens
   useEffect(() => {
@@ -103,7 +74,6 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
           if (!friendsData || Object.keys(friendsData).length === 0) {
             setFriendsToDisplay([]);
-            // No setIsLoadingFriends(false) here, finally block handles it
             return;
           }
 
@@ -132,7 +102,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         } catch (error) {
           console.error("Error loading friends data for GC dialog:", error);
           toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
-          setFriendsToDisplay([]); // Ensure cleared on error before finally
+          setFriendsToDisplay([]);
         } finally {
           setIsLoadingFriends(false);
         }
@@ -140,12 +110,8 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
 
       loadInitialDataForDialog();
     }
-  }, [isOpen, currentUser?.uid, toast]); // toast is stable from useToast
+  }, [isOpen, currentUser?.uid, toast]);
 
-
-  const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
-    setIsOpen(openValue);
-  }, [setIsOpen]); // setIsOpen from useState is stable
 
   const handleSelectFriendInForm = useCallback((friendId: string) => {
     if (isCreatingGC) return; 
@@ -154,7 +120,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
         ? prevSelected.filter((id) => id !== friendId)
         : [...prevSelected, friendId]
     );
-  }, [isCreatingGC]); // isCreatingGC is a dependency here
+  }, [isCreatingGC]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -163,7 +129,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       return;
     }
     
-    const creatorDisplayName = currentUserProfile.displayName || "User";
+    const creatorDisplayName = currentUserProfile.displayName || currentUser.displayName || "User";
 
     if (!gcName.trim()) {
       toast({ title: 'Error', description: 'Group Chat name cannot be empty.', variant: 'destructive' });
@@ -199,19 +165,20 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
       };
       await push(messagesRef, initialMessage);
       
-      // Placeholder for notifying friends - this would typically involve writing to a 'notifications/{friendUid}' path
-      // For now, we'll just log it. In a real app, you'd trigger a cloud function or write directly if rules allow.
+      // Placeholder for notifying friends
       selectedFriends.forEach(friendUid => {
-        // const notificationRef = ref(database, `user_notifications/${friendUid}`); // Example path for notifications
-        // const newNotification = {
-        //     type: 'gc_invite',
-        //     title: `Added to ${gcName}`,
-        //     message: `${creatorDisplayName} added you to the group chat: ${gcName}.`,
-        //     chatId: newGCId,
-        //     timestamp: serverTimestamp(),
-        //     read: false,
-        // };
-        // push(notificationRef, newNotification); // This would be the actual write
+        // Example: Writing a notification to a hypothetical 'user_notifications/{friendUid}' path
+        // const notificationRef = ref(database, `user_notifications/${friendUid}/${push(ref(database, `user_notifications/${friendUid}`)).key}`);
+        // set(notificationRef, {
+        //   type: 'gc_invite',
+        //   title: `Added to "${gcName}"`,
+        //   message: `${creatorDisplayName} added you to the group chat.`,
+        //   chatId: newGCId,
+        //   timestamp: serverTimestamp(),
+        //   read: false,
+        //   fromUid: currentUser.uid,
+        //   fromUsername: currentUserProfile.username || 'user'
+        // });
         console.log(`Placeholder: Would send notification to ${friendUid} for GC ${newGCId} (${gcName})`);
       });
 
@@ -246,7 +213,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      {isOpen && ( // Conditionally render DialogContent
+      {isOpen && ( 
         <DialogContent className="sm:max-w-[480px]">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
@@ -290,7 +257,7 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
                             checked={selectedFriends.includes(friend.id)}
                             aria-labelledby={`friend-label-dialog-unique-${friend.id}`}
                             disabled={isCreatingGC || isLoadingFriends}
-                            onCheckedChange={() => handleSelectFriendInForm(friend.id)}
+                            onCheckedChange={() => handleSelectFriendInForm(friend.id)} // Ensures checkbox click also calls the handler
                           />
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
@@ -325,5 +292,3 @@ export function CreateGCDialog({ children }: CreateGCDialogProps) {
     </Dialog>
   );
 }
-
-    

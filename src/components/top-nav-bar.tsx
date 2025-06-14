@@ -37,7 +37,7 @@ const navItems = [
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
-interface UserProfileData {
+export interface TopNavBarUserProfileData { // Exporting for CreateGCDialog
   displayName?: string;
   avatar?: string;
   nameColor?: string;
@@ -72,7 +72,7 @@ export function TopNavBar() {
   const router = useRouter();
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [userProfileData, setUserProfileData] = useState<UserProfileData | null>(null);
+  const [userProfileData, setUserProfileData] = useState<TopNavBarUserProfileData | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
@@ -269,7 +269,7 @@ export function TopNavBar() {
                 {item.label}
               </Link>
             ))}
-            <CreateGCDialog>
+            <CreateGCDialog currentUser={currentUser} currentUserProfile={userProfileData}>
               <Button variant="ghost" className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:text-primary" onClick={() => setIsMobileMenuOpen(false)}>
                 <MessageSquareText className="h-5 w-5" /> Create GC
               </Button>
@@ -321,7 +321,7 @@ export function TopNavBar() {
                 </Link>
               </TabsTrigger>
             ))}
-             <CreateGCDialog>
+             <CreateGCDialog currentUser={currentUser} currentUserProfile={userProfileData}>
                 <Button variant="ghost" size="sm" className="ml-2 flex items-center gap-1.5 text-muted-foreground hover:text-primary">
                     <MessageSquareText className="h-4 w-4" /> Create GC
                 </Button>
@@ -470,3 +470,4 @@ export function TopNavBar() {
     </header>
   );
 }
+
