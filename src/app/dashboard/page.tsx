@@ -52,10 +52,10 @@ function DashboardPageContent() {
   }, [searchParams, router]);
 
   const specializedChats = [
-    { name: "Unblocked Chat", id: "global-unblocked", icon: ShieldAlert, description: "General chat, less restrictive." },
+    { name: "Unblocked Chat", id: "global-unblocked", icon: ShieldAlert, description: "Find new games and unblockers." },
     { name: "School Chat", id: "global-school", icon: SchoolIcon, description: "Discuss school-related topics." },
     { name: "Anonymous Chat", id: "global-anonymous", icon: VenetianMask, description: "Chat anonymously with others." },
-    { name: "Support Chat", id: "global-support", icon: MessageCircleQuestion, description: "A place for mutual support." },
+    { name: "Support Chat", id: "global-support", icon: MessageCircleQuestion, description: "Report any bugs, or suggest additions." },
   ];
 
   return (
