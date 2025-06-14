@@ -286,6 +286,7 @@ export function TopNavBar() {
           xmlns="http://www.w3.org/2000/svg"
           className="text-primary"
         >
+          {/* Minimal Beach Chair Icon */}
           <path d="M6 19L9 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M18 19L15 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M8 8L16 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
