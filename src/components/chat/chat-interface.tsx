@@ -22,7 +22,8 @@ interface ChatInterfaceProps {
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
   isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null;
+  currentUser: FirebaseUser | null; // Changed from FirebaseUser | null | undefined
+  authResolved: boolean; // Added prop
 }
 
 interface UserProfileData {
@@ -48,7 +49,7 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
-export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser }: ChatInterfaceProps) {
+export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, authResolved }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
@@ -64,12 +65,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const messagesBeingMarkedAsRead = useRef(new Set<string>());
 
 
-  const typingStatusRef = useMemo(() => chatId ? ref(database, `typing_status/${chatId}`) : null, [chatId]);
-  const currentUserTypingRef = useMemo(() => (chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [chatId, currentUser]);
+  const typingStatusRef = useMemo(() => (authResolved && chatId) ? ref(database, `typing_status/${chatId}`) : null, [authResolved, chatId]);
+  const currentUserTypingRef = useMemo(() => (authResolved && chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [authResolved, chatId, currentUser?.uid]);
 
-  // Centralized profile fetching logic to be used by various effects
   const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid]; // Return cached if available
+    if (usersCache[uid]) return usersCache[uid];
 
     if (uid === 'ai-chatbot-uid' || uid === 'system') {
       const specialProfile: UserProfileData = {
@@ -78,9 +78,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System',
           avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`,
           nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a',
-          isShinyGold: false,
-          isShinySilver: false,
-          isAdmin: false,
+          isShinyGold: false, isShinySilver: false, isAdmin: false,
       };
       setUsersCache(prev => ({ ...prev, [uid]: specialProfile }));
       return specialProfile;
@@ -110,35 +108,31 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       console.error(`Error fetching user profile for ${uid}:`, error);
       return null;
     }
-  }, [usersCache]); // Depends on usersCache to check existence
+  }, [usersCache]);
 
   useEffect(() => {
-    if (currentUser) {
+    if (authResolved && currentUser) {
       fetchAndCacheUserProfile(currentUser.uid).then(profile => {
         if (profile) {
           setCurrentUserProfile(profile);
         } else {
           const fallbackUsername = currentUser.email?.split('@')[0] || "user";
           setCurrentUserProfile({
-            uid: currentUser.uid,
-            username: fallbackUsername,
+            uid: currentUser.uid, username: fallbackUsername,
             displayName: currentUser.displayName || fallbackUsername,
             avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
-            isShinyGold: false,
-            isShinySilver: false,
-            isAdmin: false,
+            isShinyGold: false, isShinySilver: false, isAdmin: false,
           });
         }
       });
-    } else {
+    } else if (!currentUser) { // If user logs out or auth not resolved
       setCurrentUserProfile(null);
     }
-  }, [currentUser, fetchAndCacheUserProfile]);
+  }, [authResolved, currentUser, fetchAndCacheUserProfile]);
 
 
-  // Typing indicator listeners
   useEffect(() => {
-    if (!typingStatusRef || chatType === 'ai' || isAnonymousMode || !currentUser?.uid) {
+    if (!authResolved || !typingStatusRef || chatType === 'ai' || !currentUser?.uid) { // Added authResolved gate
       setTypingUsers({});
       return;
     }
@@ -159,10 +153,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     });
 
     return () => off(typingStatusRef, 'value', listener);
-  }, [typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
+  }, [authResolved, typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
 
 
-  // Message listeners
   useEffect(() => {
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
@@ -170,17 +163,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         fetchAndCacheUserProfile('ai-chatbot-uid').then(aiProfile => {
             setMessages([
               {
-                id: 'ai-welcome',
-                sender: aiProfile?.displayName || 'RealTalk AI',
-                senderUid: 'ai-chatbot-uid',
-                senderUsername: aiProfile?.username || 'realtalk_ai',
+                id: 'ai-welcome', sender: aiProfile?.displayName || 'RealTalk AI',
+                senderUid: 'ai-chatbot-uid', senderUsername: aiProfile?.username || 'realtalk_ai',
                 avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
                 content: "Hello! I'm your AI Chatbot. How can I help you today?",
-                originalTimestamp: Date.now(),
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                isOwnMessage: false,
-                senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-                chatType: 'ai',
+                originalTimestamp: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isOwnMessage: false, senderNameColor: aiProfile?.nameColor || '#8B5CF6', chatType: 'ai',
               }
             ]);
         });
@@ -188,7 +176,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       return;
     }
 
-    if (!currentUser || !chatId) {
+    if (!authResolved || !currentUser || !chatId ) { // Stricter gate
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -215,9 +203,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
       const uidsInSnapshot = new Set<string>();
       messageDataArray.forEach(msgEntry => {
-        if (msgEntry.data.senderUid) {
-          uidsInSnapshot.add(msgEntry.data.senderUid);
-        }
+        if (msgEntry.data.senderUid) uidsInSnapshot.add(msgEntry.data.senderUid);
       });
       
       const newProfilesToFetch: {[uid: string]: UserProfileData} = {};
@@ -230,15 +216,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
               if (userSnapshot.exists()) {
                 const userData = userSnapshot.val();
                 newProfilesToFetch[uid] = {
-                  uid,
-                  username: userData.username,
-                  displayName: userData.displayName || userData.username,
-                  avatar: userData.avatar,
-                  nameColor: userData.nameColor,
-                  title: userData.title,
-                  isShinyGold: userData.isShinyGold || false,
-                  isShinySilver: userData.isShinySilver || false,
-                  isAdmin: userData.isAdmin || false,
+                  uid, username: userData.username, displayName: userData.displayName || userData.username,
+                  avatar: userData.avatar, nameColor: userData.nameColor, title: userData.title,
+                  isShinyGold: userData.isShinyGold || false, isShinySilver: userData.isShinySilver || false, isAdmin: userData.isAdmin || false,
                 };
               }
             })
@@ -247,11 +227,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       });
       
       await Promise.all(profileFetchPromises);
-
       if (Object.keys(newProfilesToFetch).length > 0) {
         setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
       }
-      
       const currentCombinedCache = { ...usersCache, ...newProfilesToFetch };
 
       const resolvedMessages = messageDataArray.map((msgEntry) => {
@@ -275,9 +253,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             sender: profile?.displayName || msgData.senderName || (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid' ? "Anonymous" : "User"),
             senderUid: senderUid,
             senderUsername: profile?.username || msgData.senderUsername || (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid' ? "anonymous" : "user"),
-            avatar: avatarUrl,
-            content: msgData.content,
-            originalTimestamp: msgData.timestamp,
+            avatar: avatarUrl, content: msgData.content, originalTimestamp: msgData.timestamp,
             timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: senderUid === currentUser?.uid,
             senderNameColor: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? undefined : (profile?.nameColor || msgData.senderNameColor),
@@ -285,8 +261,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             senderIsShinyGold: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isShinyGold || msgData.senderIsShinyGold || false),
             senderIsShinySilver: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isShinySilver || msgData.senderIsShinySilver || false),
             senderIsAdmin: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isAdmin || msgData.senderIsAdmin || false),
-            reactions: msgData.reactions || {},
-            chatType: chatType,
+            reactions: msgData.reactions || {}, chatType: chatType,
             readByRecipientTimestamp: msgData.readByRecipientTimestamp,
         };
         
@@ -308,17 +283,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       setIsLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching messages:", error);
-      toast({ title: "Error", description: "Could not load messages.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not load messages. ${error.message}`, variant: "destructive" });
       setIsLoadingMessages(false);
     });
 
-    return () => {
-      off(messagesRefQuery, 'value', listener);
-    };
-  }, [currentUser, chatType, chatId, toast, isAnonymousMode, usersCache, fetchAndCacheUserProfile]); // Added usersCache here
+    return () => off(messagesRefQuery, 'value', listener);
+  }, [authResolved, currentUser?.uid, chatType, chatId, toast, isAnonymousMode, usersCache, fetchAndCacheUserProfile]);
 
 
-  // Effect for auto-scrolling and detecting new messages while scrolled up
   useEffect(() => {
     const viewport = scrollAreaViewportRef.current;
     if (viewport) {
@@ -329,11 +301,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       if (showScrollToBottomButton && newMessagesArrived && isLastMessageNotOwnOrSystem) {
         setHasNewMessagesWhileScrolledUp(true);
       }
-
       if (!showScrollToBottomButton) {
-        setTimeout(() => {
-          viewport.scrollTop = viewport.scrollHeight;
-        }, 0);
+        setTimeout(() => { viewport.scrollTop = viewport.scrollHeight; }, 0);
       }
     }
     prevMessagesLengthRef.current = messages.length;
@@ -341,7 +310,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   const handleSendMessage = async (content: string) => {
-    if (!currentUser || !currentUserProfile) {
+    if (!authResolved || !currentUser || !currentUserProfile) {
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
@@ -351,21 +320,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
     if (chatType === 'ai') {
         const userMessage: Message = {
-            id: String(Date.now()),
-            sender: currentUserProfile.displayName,
-            senderUid: currentUserProfile.uid,
+            id: String(Date.now()), sender: currentUserProfile.displayName, senderUid: currentUserProfile.uid,
             senderUsername: currentUserProfile.username,
             avatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
-            content,
-            originalTimestamp: Date.now(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isOwnMessage: true,
-            senderNameColor: currentUserProfile.nameColor,
-            senderTitle: currentUserProfile.title,
-            senderIsShinyGold: currentUserProfile.isShinyGold,
-            senderIsShinySilver: currentUserProfile.isShinySilver,
-            senderIsAdmin: currentUserProfile.isAdmin,
-            chatType: 'ai',
+            content, originalTimestamp: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: true, senderNameColor: currentUserProfile.nameColor, senderTitle: currentUserProfile.title,
+            senderIsShinyGold: currentUserProfile.isShinyGold, senderIsShinySilver: currentUserProfile.isShinySilver,
+            senderIsAdmin: currentUserProfile.isAdmin, chatType: 'ai',
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -374,19 +335,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           const aiResponsePayload: AiChatInput = { message: content };
           const aiResult: AiChatOutput = await aiChat(aiResponsePayload);
           const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
-
           const aiResponseMessage: Message = {
-            id: String(Date.now() + 1),
-            sender: aiProfile?.displayName || 'RealTalk AI',
-            senderUid: 'ai-chatbot-uid',
+            id: String(Date.now() + 1), sender: aiProfile?.displayName || 'RealTalk AI', senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
-            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
-            content: aiResult.response,
-            originalTimestamp: Date.now(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isOwnMessage: false,
-            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-            chatType: 'ai',
+            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI', content: aiResult.response,
+            originalTimestamp: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: false, senderNameColor: aiProfile?.nameColor || '#8B5CF6', chatType: 'ai',
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
@@ -394,24 +348,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
           const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
           const errorMessage: Message = {
-            id: String(Date.now() + 1),
-            sender: aiProfile?.displayName || 'RealTalk AI',
-            senderUid: 'ai-chatbot-uid',
+            id: String(Date.now() + 1), sender: aiProfile?.displayName || 'RealTalk AI', senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
-            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI',
-            content: errorMessageContent,
-            originalTimestamp: Date.now(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isOwnMessage: false,
-            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-            chatType: 'ai',
+            avatar: aiProfile?.avatar || 'https://placehold.co/40x40.png?text=AI', content: errorMessageContent,
+            originalTimestamp: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwnMessage: false, senderNameColor: aiProfile?.nameColor || '#8B5CF6', chatType: 'ai',
           };
           setMessages(prev => [...prev, errorMessage]);
-          toast({
-            title: "AI Error",
-            description: "Could not get a response from the AI. " + (error.message || ""),
-            variant: "destructive",
-          });
+          toast({ title: "AI Error", description: "Could not get a response from the AI. " + (error.message || ""), variant: "destructive", });
         } finally {
           setIsAiResponding(false);
         }
@@ -431,17 +375,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     }
     const messagesDbRef = ref(database, messagesDbRefPath);
 
-
     const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
       senderName: isAnonymousMode ? "Anonymous" : currentUserProfile.displayName,
       senderUsername: isAnonymousMode ? `anon_${currentUserProfile.uid.substring(0,6)}` : currentUserProfile.username,
       senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`),
-      content,
-      timestamp: serverTimestamp(),
-      reactions: {},
+      content, timestamp: serverTimestamp(), reactions: {},
     };
-
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
 
     if (!isAnonymousMode) {
@@ -493,9 +433,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         setHasNewMessagesWhileScrolledUp(false);
       } else {
         const userScrolledSignificantlyUp = viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - SCROLL_TO_BOTTOM_THRESHOLD;
-        if (userScrolledSignificantlyUp) {
-          setShowScrollToBottomButton(true);
-        } else {
+        if (userScrolledSignificantlyUp) setShowScrollToBottomButton(true);
+        else {
           setShowScrollToBottomButton(false);
           if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
         }
@@ -509,7 +448,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                       const viewportRect = viewport.getBoundingClientRect();
                       if (rect.top >= viewportRect.top && rect.bottom <= viewportRect.bottom) {
                           messagesBeingMarkedAsRead.current.add(msg.id);
-                          const msgPath = chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`;
+                          const msgPath = msg.chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`; // Corrected path logic for GCs
                           const messageRef = ref(database, msgPath);
                           update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
                               .then(() => messagesBeingMarkedAsRead.current.delete(msg.id))
@@ -522,9 +461,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
               }
           });
       }
-
     }
-  }, [messages, chatType, currentUser, chatId]);
+  }, [messages, chatType, currentUser, chatId]); // Added chatId to dependencies
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = scrollAreaViewportRef.current;
@@ -536,17 +474,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   }, []);
 
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
-    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return;
+    if (!authResolved || !currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return;
 
     const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
 
     try {
       await runTransaction(reactionRef, (currentData) => {
-        if (currentData === null) {
-          return { count: 1, users: { [currentUser.uid]: true } };
-        }
-
+        if (currentData === null) return { count: 1, users: { [currentUser.uid]: true } };
         const currentUsers = currentData.users || {};
         if (currentUsers[currentUser.uid]) {
           currentData.count = (currentData.count || 0) - 1;
@@ -563,34 +498,28 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       console.error("Error toggling reaction:", error);
       toast({ title: "Error", description: "Could not update reaction.", variant: "destructive" });
     }
-  }, [currentUser, currentUserProfile, toast, isAnonymousMode]);
+  }, [authResolved, currentUser, currentUserProfile, toast, isAnonymousMode]);
 
 
   return (
     <Card className="flex flex-col h-full w-full shadow-lg rounded-lg overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between p-3 md:p-4 border-b">
         <CardTitle className="text-base md:text-lg font-headline">{chatTitle || "Loading Chat..."}</CardTitle>
-        {chatType !== 'ai' && !isAnonymousMode && (
+        {chatType !== 'ai' && !isAnonymousMode && authResolved && currentUser && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" disabled={!currentUser}>
-              <MoreVertical size={20} />
-            </Button>
+            <Button variant="ghost" size="icon"> <MoreVertical size={20} /> </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {chatType === 'gc' && (
-              <>
-                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave GC clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave GC</DropdownMenuItem>
-              </>
+              <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
+               <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
+               <DropdownMenuSeparator />
+               <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave GC clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave GC</DropdownMenuItem></>
             )}
              {chatType === 'dm' && (
-              <>
-                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"View user's profile (UI only)"})}><Info size={16} className="mr-2" /> View Profile</DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
+              <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"View user's profile (UI only)"})}><Info size={16} className="mr-2" /> View Profile</DropdownMenuItem>
+               <DropdownMenuSeparator /></>
             )}
             {chatType === 'global' && (
                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Chat info clicked (UI only)"})}><Info size={16} className="mr-2" /> Chat Info</DropdownMenuItem>
@@ -605,37 +534,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1">
             {isLoadingMessages && (!messages || messages.length === 0) ? (
-              <div className="flex justify-center items-center h-full p-10">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
+              <div className="flex justify-center items-center h-full p-10"> <Loader2 className="h-8 w-8 animate-spin text-primary" /> </div>
             ) : messages.length === 0 && chatType !== 'ai' ? (
-              <div className="text-center text-muted-foreground py-10">
-                <p>No messages yet.</p>
-                <p>Be the first to say something!</p>
-              </div>
+              <div className="text-center text-muted-foreground py-10"> <p>No messages yet.</p> <p>Be the first to say something!</p> </div>
             ) : (
               messages.map((msg, index) => {
                 const previousMessage = index > 0 ? messages[index - 1] : undefined;
                 const isSameSenderAsPrevious = previousMessage && previousMessage.senderUid === msg.senderUid;
-
                 let isWithinContinuationThreshold = false;
                 if (isSameSenderAsPrevious && msg.originalTimestamp && previousMessage?.originalTimestamp) {
                     isWithinContinuationThreshold = (msg.originalTimestamp - previousMessage.originalTimestamp) < MESSAGE_GROUP_THRESHOLD_MS;
                 }
-
                 const showAvatarAndSender = !isSameSenderAsPrevious || !isWithinContinuationThreshold;
                 const isContinuation = !showAvatarAndSender;
-
                 return (
-                  <ChatMessage
-                    key={msg.id}
-                    message={{...msg, chatType: chatType}}
-                    showAvatarAndSender={showAvatarAndSender}
-                    isContinuation={isContinuation}
-                    onToggleReaction={handleToggleReaction}
-                    chatId={chatId}
-                    isAnonymousContext={isAnonymousMode}
-                  />
+                  <ChatMessage key={msg.id} message={{...msg, chatType: chatType}}
+                    showAvatarAndSender={showAvatarAndSender} isContinuation={isContinuation}
+                    onToggleReaction={handleToggleReaction} chatId={chatId} isAnonymousContext={isAnonymousMode} />
                 );
               })
             )}
@@ -651,37 +566,24 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           </div>
         </ScrollArea>
         {showScrollToBottomButton && (
-            <Button
-                variant="outline"
-                size="default"
-                className={cn(
-                    "absolute bottom-4 right-4 z-10 rounded-full shadow-lg h-10 px-3 md:px-4 text-sm",
-                    "bg-background/80 backdrop-blur-sm hover:bg-background"
-                )}
-                onClick={() => scrollToBottom('smooth')}
-            >
-                <ArrowDown
-                    className={cn(
-                        "h-4 w-4 md:h-5 md:w-5",
-                        hasNewMessagesWhileScrolledUp ? "mr-1 md:mr-1.5 animate-bounce-sm" : "mr-0 md:mr-1"
-                    )}
-                />
+            <Button variant="outline" size="default"
+                className={cn("absolute bottom-4 right-4 z-10 rounded-full shadow-lg h-10 px-3 md:px-4 text-sm", "bg-background/80 backdrop-blur-sm hover:bg-background")}
+                onClick={() => scrollToBottom('smooth')}>
+                <ArrowDown className={cn("h-4 w-4 md:h-5 md:w-5", hasNewMessagesWhileScrolledUp ? "mr-1 md:mr-1.5 animate-bounce-sm" : "mr-0 md:mr-1")} />
                 <span className="hidden md:inline">{hasNewMessagesWhileScrolledUp ? "New Messages" : "To Bottom"}</span>
                 {hasNewMessagesWhileScrolledUp && <span className="md:hidden">New!</span>}
             </Button>
         )}
       </CardContent>
-      {typingDisplayMessage && (
-        <div className="px-4 pb-1 pt-0 text-xs text-muted-foreground h-5">
-            {typingDisplayMessage}
-        </div>
+      {authResolved && typingDisplayMessage && ( // Only show typing if auth is resolved
+        <div className="px-4 pb-1 pt-0 text-xs text-muted-foreground h-5"> {typingDisplayMessage} </div>
       )}
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={(chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)}
-            chatId={chatId}
-            currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile}
+            disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)}
+            chatId={authResolved ? chatId : undefined} // Only pass chatId if auth is resolved
+            currentUserProfile={(authResolved && currentUser) ? (isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile) : null}
         />
       </CardFooter>
     </Card>
