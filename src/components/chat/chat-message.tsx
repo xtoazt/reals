@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { SmilePlus, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck, Check, CheckCheck } from 'lucide-react';
+import { SmilePlus, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck, Check, CheckCheck, VenetianMask } from 'lucide-react'; // Added VenetianMask
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -21,7 +21,6 @@ export interface ReactionDetail {
 export interface Reactions {
   thumbsUp?: ReactionDetail;
   heart?: ReactionDetail;
-  // Add other reaction types here if needed
 }
 
 export interface Message {
@@ -42,8 +41,8 @@ export interface Message {
   reactions?: Reactions;
   imageUrl?: string;
   link?: { url: string; title?: string; description?: string; image?: string };
-  chatType?: 'global' | 'gc' | 'dm' | 'ai'; // Added for context
-  readByRecipientTimestamp?: number; // For DM read receipts
+  chatType?: 'global' | 'gc' | 'dm' | 'ai';
+  readByRecipientTimestamp?: number;
 }
 
 interface ChatMessageProps {
@@ -51,7 +50,8 @@ interface ChatMessageProps {
   showAvatarAndSender: boolean;
   isContinuation: boolean;
   onToggleReaction: (messageId: string, reactionType: keyof Reactions, chatType: Message['chatType'], chatId: string) => void;
-  chatId: string; // Needed for reaction path
+  chatId: string;
+  isAnonymousContext?: boolean; // Added prop
 }
 
 const availableReactions: Array<{ type: keyof Reactions; icon: React.ElementType }> = [
@@ -59,13 +59,36 @@ const availableReactions: Array<{ type: keyof Reactions; icon: React.ElementType
   { type: 'heart', icon: Heart },
 ];
 
-export function ChatMessage({ message, showAvatarAndSender, isContinuation, onToggleReaction, chatId }: ChatMessageProps) {
+export function ChatMessage({ message: propMessage, showAvatarAndSender, isContinuation, onToggleReaction, chatId, isAnonymousContext = false }: ChatMessageProps) {
   const { toast } = useToast();
   const router = useRouter();
   const currentUser = auth.currentUser;
   const [isReactionPopoverOpen, setIsReactionPopoverOpen] = useState(false);
 
+  // Apply anonymous transformations
+  const message = React.useMemo(() => {
+    if (isAnonymousContext && !propMessage.isOwnMessage && propMessage.senderUid !== 'system' && propMessage.senderUid !== 'ai-chatbot-uid') {
+      return {
+        ...propMessage,
+        sender: "Anonymous",
+        senderUsername: "anonymous",
+        avatar: `https://placehold.co/40x40.png?text=??`, // Generic avatar
+        senderNameColor: undefined,
+        senderTitle: undefined,
+        senderIsShinyGold: false,
+        senderIsShinySilver: false,
+        senderIsAdmin: false,
+      };
+    }
+    return propMessage;
+  }, [propMessage, isAnonymousContext]);
+
+
   const handleAddFriendFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
+    if (isAnonymousContext) {
+        toast({ title: "Action Disabled", description: "Cannot add friends in Anonymous Chat.", variant: "destructive" });
+        return;
+    }
     if (!currentUser || !currentUser.uid) {
       toast({ title: "Error", description: "You must be logged in to send friend requests.", variant: "destructive" });
       return;
@@ -138,6 +161,10 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
   };
 
   const handleBlockUserFromChat = async (targetUid: string | undefined, targetUsername: string | undefined) => {
+     if (isAnonymousContext) {
+        toast({ title: "Action Disabled", description: "Cannot block users in Anonymous Chat.", variant: "destructive" });
+        return;
+    }
     if (!currentUser || !currentUser.uid) {
       toast({ title: "Error", description: "You must be logged in to block users.", variant: "destructive" });
       return;
@@ -187,6 +214,10 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
   };
 
   const handleViewUserProfile = (username?: string) => {
+    if (isAnonymousContext) {
+        toast({ title: "Anonymous User", description: "User profiles are hidden in Anonymous Chat."});
+        return;
+    }
     if (username && message.senderUid !== 'ai-chatbot-uid' && message.senderUid !== 'system') {
         router.push(`/dashboard/profile/${username}`);
     } else if (message.senderUid === 'ai-chatbot-uid') {
@@ -199,6 +230,10 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
   };
 
   const showUserInteractionToast = () => {
+    if (isAnonymousContext) {
+        toast({ title: "Anonymous User", description: "User interactions are limited in Anonymous Chat."});
+        return;
+    }
     if (message.isOwnMessage || !message.senderUid || !message.senderUsername || message.senderUid === 'ai-chatbot-uid' || message.senderUid === 'system') {
         if (message.senderUid === 'ai-chatbot-uid') {
             toast({ title: message.sender, description: "I'm the AI assistant for RealTalk!"});
@@ -252,7 +287,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
   const renderContent = () => {
     const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
-      if (part.startsWith('@') && part.length > 1) {
+      if (part.startsWith('@') && part.length > 1 && !isAnonymousContext) { // Mention clickable only if not anonymous
         const mentionedUsername = part.substring(1);
         return (
           <span key={index} className="text-accent font-semibold cursor-pointer hover:underline" onClick={() => router.push(`/dashboard/profile/${mentionedUsername}`)}>
@@ -283,35 +318,49 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-
-  let senderNameClassName = message.isOwnMessage ? "text-primary" : "text-foreground/80 cursor-pointer hover:underline";
-  let senderNameStyle = {};
-  if (message.senderIsShinyGold) {
-    senderNameClassName = cn(senderNameClassName, 'text-shiny-gold');
-  } else if (message.senderIsShinySilver) {
-    senderNameClassName = cn(senderNameClassName, 'text-shiny-silver');
-  } else if (message.senderNameColor) {
-    senderNameStyle = { color: message.senderNameColor };
+  if (isAnonymousContext && !message.isOwnMessage && message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid') {
+     // fallbackAvatarText = "??"; // For anonymous user
   }
+
+
+  let senderNameClassName = message.isOwnMessage ? "text-primary" : "text-foreground/80";
+  if (!message.isOwnMessage && !isAnonymousContext && message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid') {
+    senderNameClassName += " cursor-pointer hover:underline";
+  }
+  let senderNameStyle = {};
+
+  if (!isAnonymousContext || message.isOwnMessage) { // Apply special styles only if not anonymous or own message
+      if (message.senderIsShinyGold) {
+        senderNameClassName = cn(senderNameClassName, 'text-shiny-gold');
+      } else if (message.senderIsShinySilver) {
+        senderNameClassName = cn(senderNameClassName, 'text-shiny-silver');
+      } else if (message.senderNameColor) {
+        senderNameStyle = { color: message.senderNameColor };
+      }
+  }
+
 
   let senderTitleClassName = "text-xs font-medium italic flex items-center shrink-0";
   let senderTitleStyle = { color: 'hsl(var(--foreground))' };
-   if (message.senderIsShinyGold) {
-    senderTitleClassName = cn(senderTitleClassName, 'text-shiny-gold');
-    senderTitleStyle = {};
-  } else if (message.senderIsShinySilver) {
-    senderTitleClassName = cn(senderTitleClassName, 'text-shiny-silver');
-    senderTitleStyle = {};
-  } else if (message.senderNameColor) {
-     senderTitleStyle = { color: message.senderNameColor };
+  if (!isAnonymousContext || message.isOwnMessage) { // Apply special styles for title
+       if (message.senderIsShinyGold) {
+        senderTitleClassName = cn(senderTitleClassName, 'text-shiny-gold');
+        senderTitleStyle = {};
+      } else if (message.senderIsShinySilver) {
+        senderTitleClassName = cn(senderTitleClassName, 'text-shiny-silver');
+        senderTitleStyle = {};
+      } else if (message.senderNameColor) {
+         senderTitleStyle = { color: message.senderNameColor };
+      }
   }
 
   const hasReactions = message.reactions && Object.values(message.reactions).some(r => r && r.count > 0);
 
   return (
     <div
+      id={`message-${message.id}`}
       className={cn(
-        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group relative', // Added relative for popover positioning
+        'flex items-start gap-3 max-w-[85%] md:max-w-[75%] rounded-lg group relative',
         isContinuation ? 'mt-[2px]' : 'my-1',
         message.isOwnMessage
           ? 'ml-auto bg-primary/10'
@@ -326,8 +375,8 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
     >
       {!message.isOwnMessage && showAvatarAndSender && (
         <Avatar className="h-8 w-8 cursor-pointer flex-shrink-0" onClick={() => handleViewUserProfile(message.senderUsername)}>
-          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
-          <AvatarFallback>{fallbackAvatarText}</AvatarFallback>
+          <AvatarImage src={message.avatar || `https://placehold.co/40x40.png?text=${isAnonymousContext ? '??' : fallbackAvatarText}`} alt={message.sender} data-ai-hint="profile avatar" />
+          <AvatarFallback>{isAnonymousContext ? <VenetianMask size={18}/> : fallbackAvatarText}</AvatarFallback>
         </Avatar>
       )}
       <div className="flex-1 min-w-0">
@@ -337,12 +386,12 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
             <p
                 className={cn("text-xs font-semibold", senderNameClassName)}
                 style={senderNameStyle}
-                onClick={!message.isOwnMessage && message.senderUid !== 'ai-chatbot-uid' && message.senderUid !== 'system' ? showUserInteractionToast : undefined}
+                onClick={!message.isOwnMessage && !isAnonymousContext && message.senderUid !== 'ai-chatbot-uid' && message.senderUid !== 'system' ? showUserInteractionToast : undefined}
               >
                 {message.sender}
-                 {message.senderIsAdmin && <ShieldCheck className="inline-block ml-1 h-3.5 w-3.5 text-destructive" />}
+                 {message.senderIsAdmin && !isAnonymousContext && <ShieldCheck className="inline-block ml-1 h-3.5 w-3.5 text-destructive" />}
               </p>
-              {message.senderTitle && (
+              {message.senderTitle && !isAnonymousContext && (
                 <p className={cn(senderTitleClassName)} style={senderTitleStyle}>
                   {message.senderTitle}
                 </p>
@@ -383,7 +432,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
             {message.link.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{message.link.description}</p>}
           </a>
         )}
-        {hasReactions && (
+        {hasReactions && !isAnonymousContext && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {availableReactions.map(reaction => {
               const reactionData = message.reactions?.[reaction.type];
@@ -424,7 +473,7 @@ export function ChatMessage({ message, showAvatarAndSender, isContinuation, onTo
       )}
 
 
-      {message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid' && (
+      {message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid' && !isAnonymousContext && (
         <Popover open={isReactionPopoverOpen} onOpenChange={setIsReactionPopoverOpen}>
             <PopoverTrigger asChild>
                 <Button

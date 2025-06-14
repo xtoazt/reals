@@ -31,8 +31,8 @@
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
-        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
+        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
+        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.contains('gc-') && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
         ".indexOn": ["timestamp"],
         "gcName": { ".validate": "$chatId.contains('gc-') && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "createdBy": { ".validate": "$chatId.contains('gc-') && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
@@ -45,8 +45,8 @@
         "messages": { 
           ".indexOn": ["timestamp"], 
           "$messageId": {
-            ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now) || data.exists())",
-            "senderUid": { ".validate": "newData.isString() && ((newData.val() === auth.uid || newData.val() === 'system') || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
+            ".validate": "$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system') && newData.child('timestamp').val() === now) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
+            "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
             "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
             "senderAvatar": { ".validate": "newData.isString()" },
@@ -55,7 +55,7 @@
             "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
             "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
-            "timestamp": { ".validate": "newData.isNumber() && (newData.val() === now || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
+            "timestamp": { ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
             "reactions": {
               "$reactionType": { 
                 "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
@@ -73,8 +73,8 @@
           }
         },
         "$messageId": {
-          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now) || data.exists())",
-          "senderUid": { ".validate": "newData.isString() && (newData.val() === auth.uid || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
+          ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && newData.child('senderUid').val() === auth.uid && newData.child('timestamp').val() === now) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
+          "senderUid": { ".validate": "newData.isString() && ((!data.exists() && newData.val() === auth.uid) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
           "senderAvatar": { ".validate": "newData.isString()" },
@@ -83,7 +83,7 @@
           "senderIsShinyGold": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "senderIsShinySilver": { ".validate": "!newData.exists() || newData.isBoolean()" },
           "content": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000" },
-          "timestamp": { ".validate": "newData.isNumber() && (newData.val() === now || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
+          "timestamp": { ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || (data.exists() && data.child('timestamp').exists() && newData.val() === data.child('timestamp').val()))" },
           "reactions": {
             "$reactionType": { 
               "count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
@@ -154,7 +154,7 @@
     },
     "typing_status": {
       "$chatId": {
-        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
+        ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.contains('gc-') && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || $chatId === 'ai-chatbot' || ($chatId.contains('gc-') && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
         "$userId": {
           ".write": "auth != null && auth.uid === $userId",
           ".validate": "!newData.exists() || (newData.hasChildren(['isTyping', 'timestamp', 'displayName']) && newData.child('isTyping').val() === true && newData.child('timestamp').isNumber() && newData.child('displayName').isString())"
@@ -163,5 +163,3 @@
     }
   }
 }
-
-    

@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Users, Bot } from "lucide-react";
+import { MessageSquare, Users, Bot, VenetianMask, SchoolIcon, MessageCircleQuestion, ShieldAlert } from "lucide-react"; // Added new icons
 import Link from "next/link";
 import { useEffect, useState, Suspense } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -11,6 +11,15 @@ import { auth, database } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ThemeSelectionDialog } from "@/components/theme-selection-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
 
 function DashboardPageContent() {
   const [userName, setUserName] = useState<string | null>(null);
@@ -41,6 +50,13 @@ function DashboardPageContent() {
       router.replace(newPath, { scroll: false }); // Use replace to avoid adding to history
     }
   }, [searchParams, router]);
+
+  const specializedChats = [
+    { name: "Unblocked Chat", id: "global-unblocked", icon: ShieldAlert, description: "General chat, less restrictive." },
+    { name: "School Chat", id: "global-school", icon: SchoolIcon, description: "Discuss school-related topics." },
+    { name: "Anonymous Chat", id: "global-anonymous", icon: VenetianMask, description: "Chat anonymously with others." },
+    { name: "Support Chat", id: "global-support", icon: MessageCircleQuestion, description: "A place for mutual support." },
+  ];
 
   return (
     <div className="space-y-8">
@@ -113,6 +129,51 @@ function DashboardPageContent() {
           </Card>
         </Link>
       </div>
+
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-headline">Explore More Chats</CardTitle>
+          <CardDescription>
+            Discover specialized chat rooms for different interests and needs.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-full md:w-auto">
+                Select a Specialized Chat
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64">
+              <DropdownMenuLabel>Specialized Global Chats</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {specializedChats.map((chat) => (
+                <Link key={chat.id} href={`/dashboard/chat/${chat.id}`} passHref>
+                  <DropdownMenuItem className="cursor-pointer">
+                    <chat.icon className="mr-2 h-4 w-4" />
+                    <span>{chat.name}</span>
+                  </DropdownMenuItem>
+                </Link>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {specializedChats.map((chat) => (
+              <Link key={`card-${chat.id}`} href={`/dashboard/chat/${chat.id}`} passHref>
+                <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                  <CardHeader className="flex-row items-center space-x-3 pb-2">
+                    <chat.icon className="w-6 h-6 text-muted-foreground" />
+                    <CardTitle className="text-base">{chat.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground">{chat.description}</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
       
       {showThemeDialog && <ThemeSelectionDialog open={showThemeDialog} onOpenChange={setShowThemeDialog} />}
     </div>

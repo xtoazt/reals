@@ -8,7 +8,7 @@ import { auth, database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button'; // Added Button import
+import { Button } from '@/components/ui/button';
 
 interface ResolvedParams { 
   chatId: string;
@@ -22,7 +22,7 @@ interface UserProfileData {
   displayName: string;
 }
 
-interface GCChatData { // For GC specific data from chats/{chatId}
+interface GCChatData {
     gcName: string;
     members?: { [uid: string]: boolean };
 }
@@ -35,7 +35,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
-  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global'); // Changed 'party' to 'gc'
+  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
+  const [isAnonymousMode, setIsAnonymousMode] = useState(false);
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
 
   useEffect(() => {
@@ -52,11 +53,25 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     setIsLoading(true);
     let determinedTitle = '';
-    let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global'; // Changed 'party' to 'gc'
+    let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
+    let determinedAnonymousMode = false;
 
     const setupChat = async () => {
       if (resolvedChatId === 'global') {
         determinedTitle = 'Global Chat';
+        determinedType = 'global';
+      } else if (resolvedChatId === 'global-unblocked') {
+        determinedTitle = 'Unblocked Chat';
+        determinedType = 'global';
+      } else if (resolvedChatId === 'global-school') {
+        determinedTitle = 'School Chat';
+        determinedType = 'global';
+      } else if (resolvedChatId === 'global-anonymous') {
+        determinedTitle = 'Anonymous Chat';
+        determinedType = 'global';
+        determinedAnonymousMode = true;
+      } else if (resolvedChatId === 'global-support') {
+        determinedTitle = 'Support Chat';
         determinedType = 'global';
       } else if (resolvedChatId === 'ai-chatbot') {
         determinedTitle = 'AI Chatbot';
@@ -99,18 +114,17 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         } else {
             determinedTitle = 'Direct Message';
         }
-      } else if (resolvedChatId && resolvedChatId.startsWith('gc-')) { // Check for 'gc-' prefix
+      } else if (resolvedChatId && resolvedChatId.startsWith('gc-')) {
         determinedType = 'gc';
         try {
             const gcRef = ref(database, `chats/${resolvedChatId}`);
             const gcSnapshot = await get(gcRef);
             if (gcSnapshot.exists()) {
                 const gcData = gcSnapshot.val() as GCChatData;
-                determinedTitle = gcData.gcName || `Group Chat: ${resolvedChatId.substring(3, 15)}...`; // Use gcName or fallback
-                 // Optional: Check if current user is a member
+                determinedTitle = gcData.gcName || `Group Chat: ${resolvedChatId.substring(3, 15)}...`;
                 if (currentUser && gcData.members && !gcData.members[currentUser.uid]) {
                     console.warn("Current user is not a member of this GC:", resolvedChatId);
-                    determinedTitle = "Access Denied to GC"; // Or some other appropriate message
+                    determinedTitle = "Access Denied to GC";
                 }
             } else {
                 determinedTitle = "Group Chat Not Found";
@@ -128,6 +142,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       
       setChatTitle(determinedTitle);
       setChatType(determinedType);
+      setIsAnonymousMode(determinedAnonymousMode);
       setIsLoading(false);
     };
 
@@ -156,8 +171,12 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
 
   return (
      <div className="h-full max-h-[calc(100vh-57px-2rem)] md:max-h-[calc(100vh-57px-3rem)]">
-      <ChatInterface chatTitle={chatTitle} chatType={chatType} chatId={resolvedChatId} />
+      <ChatInterface
+        chatTitle={chatTitle}
+        chatType={chatType}
+        chatId={resolvedChatId}
+        isAnonymousMode={isAnonymousMode}
+      />
     </div>
   );
 }
-
