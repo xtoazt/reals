@@ -22,8 +22,7 @@ interface ChatInterfaceProps {
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
   isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null;
-  authResolved: boolean; // New prop
+  currentUser: FirebaseUser | null; // Can be null if chatType is 'ai'
 }
 
 interface UserProfileData {
@@ -49,7 +48,7 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
-export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, authResolved }: ChatInterfaceProps) {
+export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
@@ -117,11 +116,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         if (profile) {
           setCurrentUserProfile(profile);
         } else {
+          // Fallback if profile fetch fails or doesn't exist, though this case should be rare for an authenticated user
           const fallbackUsername = currentUser.email?.split('@')[0] || "user";
           setCurrentUserProfile({
             uid: currentUser.uid,
             username: fallbackUsername,
-            displayName: fallbackUsername,
+            displayName: currentUser.displayName || fallbackUsername, // Use Firebase Auth displayName if available
             avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
             isShinyGold: false,
             isShinySilver: false,
@@ -130,15 +130,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         }
       });
     } else {
-      setCurrentUserProfile(null);
+      setCurrentUserProfile(null); // Clear profile if user logs out
     }
   }, [currentUser, fetchUserProfile]);
 
 
   // Typing indicator listeners
   useEffect(() => {
-    if (!authResolved || !typingStatusRef || chatType === 'ai' || isAnonymousMode || !currentUser?.uid) {
-      setTypingUsers({}); // Clear typing users if conditions not met
+    if (!typingStatusRef || chatType === 'ai' || isAnonymousMode || !currentUser?.uid) {
+      setTypingUsers({}); 
       return;
     }
 
@@ -158,20 +158,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     });
 
     return () => off(typingStatusRef, 'value', listener);
-  }, [authResolved, typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
+  }, [typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
 
 
   // Message listeners
   useEffect(() => {
-    if (!authResolved && chatType !== 'ai') { // For non-AI chats, wait for auth to be resolved
-        setIsLoadingMessages(false);
-        setMessages([]);
-        return;
-    }
-
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
-      if (chatId === 'ai-chatbot' && messages.length === 0) {
+      if (chatId === 'ai-chatbot' && messages.length === 0) { // Only set initial AI message if none exist
         fetchUserProfile('ai-chatbot-uid').then(aiProfile => {
             setMessages([
               {
@@ -185,22 +179,19 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 isOwnMessage: false,
                 senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-                senderIsShinyGold: false,
-                senderIsShinySilver: false,
-                senderIsAdmin: false,
                 chatType: 'ai',
               }
             ]);
         });
       }
-      return;
+      return; // No further Firebase listeners for AI chat type
     }
 
-    // For non-AI chats, proceed only if auth is resolved AND currentUser exists.
-    // If authResolved is true but currentUser is null, it means user is logged out.
+    // For non-AI chats, proceed only if currentUser exists AND chatId is valid.
+    // Parent component (ChatPage) now gates rendering, so currentUser should be valid if chatType is not 'ai'.
     if (!currentUser || !chatId) {
         setIsLoadingMessages(false);
-        setMessages([]);
+        setMessages([]); // Clear messages if no user or chatId
         return;
     }
 
@@ -281,7 +272,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     return () => {
       off(messagesRefQuery, 'value', listener);
     };
-  }, [authResolved, currentUser, chatType, chatId, toast, fetchUserProfile, isAnonymousMode]);
+  }, [currentUser, chatType, chatId, toast, fetchUserProfile, isAnonymousMode]);
 
 
   // Effect for auto-scrolling and detecting new messages while scrolled up
@@ -308,6 +299,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
   const handleSendMessage = async (content: string) => {
     if (!currentUser || !currentUserProfile) {
+       // For AI chat, if currentUser is null but currentUserProfile (for AI) is set, it might proceed.
+       // However, the input is disabled if !currentUserProfile. So this check is okay.
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
@@ -318,7 +311,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     if (chatType === 'ai') {
         const userMessage: Message = {
             id: String(Date.now()),
-            sender: currentUserProfile.displayName,
+            sender: currentUserProfile.displayName, // This will be the logged-in user's name
             senderUid: currentUserProfile.uid,
             senderUsername: currentUserProfile.username,
             avatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
@@ -351,10 +344,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-            senderIsShinyGold: false,
-            senderIsShinySilver: false,
-            senderIsAdmin: false,
+            senderNameColor: aiProfile?.nameColor || '#8B5CF6', // Specific color for AI
             chatType: 'ai',
           };
           setMessages(prev => [...prev, aiResponseMessage]);
@@ -373,9 +363,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
             senderNameColor: aiProfile?.nameColor || '#8B5CF6',
-            senderIsShinyGold: false,
-            senderIsShinySilver: false,
-            senderIsAdmin: false,
             chatType: 'ai',
           };
           setMessages(prev => [...prev, errorMessage]);
@@ -390,7 +377,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         return;
     }
 
-    if (!chatId) {
+    // This part is for non-AI chats, currentUser and currentUserProfile are guaranteed by ChatPage's gating
+    if (!chatId) { // Should not happen if ChatPage gates correctly
         toast({ title: "Error", description: "Chat ID is missing.", variant: "destructive" });
         return;
     }
@@ -651,7 +639,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={(chatType === 'ai' && isAiResponding) || !currentUser}
+            disabled={(chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)} // Disable if AI responding, or if not AI chat and no current user
             chatId={chatId}
             currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile} 
         />
