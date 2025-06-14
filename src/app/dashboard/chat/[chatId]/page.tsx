@@ -32,14 +32,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const unwrappedChatId = params.chatId;
 
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined); // undefined: auth not resolved, null: logged out, User: logged in
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined);
   const [authResolved, setAuthResolved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Covers auth and chat data loading
+  const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
-  const [canAccessChat, setCanAccessChat] = useState(false); // Gate for rendering ChatInterface
+  const [canAccessChat, setCanAccessChat] = useState(false);
 
   useEffect(() => {
     setResolvedChatId(unwrappedChatId);
@@ -47,23 +47,20 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user); // user is FirebaseUser or null
+      setCurrentUser(user);
       setAuthResolved(true);
     });
     return () => unsubscribe();
-  }, []); // Runs once on mount
+  }, []);
 
   useEffect(() => {
     const performChatSetup = async () => {
-      setCanAccessChat(false); // Reset access for this evaluation run
-
       if (!authResolved) {
-        setIsLoading(true); // Auth still resolving, ensure loading is true
+        setIsLoading(true);
         return;
       }
 
-      // Auth is resolved. currentUser is either User object or null.
-      setIsLoading(true); // Start loading for this specific setup run
+      setIsLoading(true); // Always start with loading true for this run
 
       let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
       if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
@@ -89,10 +86,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         } else {
             titleToSet = "Authentication Required";
             typeToSet = determinedInitialType;
-            // finalCanAccess remains false
         }
       } else if (currentUser) { // CurrentUser is a valid FirebaseUser object (logged in)
-        if (determinedInitialType === 'global') { // Covers all global variants
+        if (determinedInitialType === 'global') {
           titleToSet = 
             resolvedChatId === 'global' ? 'Global Chat' :
             resolvedChatId === 'global-unblocked' ? 'Unblocked Chat' :
@@ -150,9 +146,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
           titleToSet = "Invalid Chat ID";
         }
       }
-      // If currentUser is still undefined (technically shouldn't happen if authResolved is true,
-      // but as a defensive measure), finalCanAccess remains false.
-
+      // If currentUser is still undefined (authResolved true, but onAuthStateChanged hasn't set currentUser yet, or some other edge case)
+      // then finalCanAccess will remain false unless it's an AI chat.
+      
       setChatTitle(titleToSet);
       setChatType(typeToSet);
       setIsAnonymousMode(anonymousModeToSet);
@@ -191,6 +187,19 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       );
   }
 
+  // Stricter guard: For non-AI chats, ensure currentUser is actually set before rendering ChatInterface
+  if (chatType !== 'ai' && !currentUser) {
+    return (
+      <div className="flex flex-col justify-center items-center h-full text-center p-4">
+        <p className="text-lg font-semibold">Authentication Required</p>
+        <p className="text-muted-foreground">Please log in to access this chat.</p>
+        <Button onClick={() => router.push('/auth')} className="mt-4">
+          Go to Login
+        </Button>
+      </div>
+    );
+  }
+
   return (
      <div className="h-full max-h-[calc(100vh-57px-2rem)] md:max-h-[calc(100vh-57px-3rem)]">
       <ChatInterface
@@ -199,7 +208,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         chatType={chatType}
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
-        currentUser={currentUser} 
+        currentUser={currentUser} // currentUser will be non-null for authenticated chats due to the guard above
         authResolved={authResolved} 
       />
     </div>
