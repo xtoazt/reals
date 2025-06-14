@@ -22,13 +22,13 @@ interface ChatInterfaceProps {
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
   isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null; // Can be null if chatType is 'ai'
+  currentUser: FirebaseUser | null;
 }
 
 interface UserProfileData {
   uid: string;
   username: string;
-  displayName: string; 
+  displayName: string;
   avatar?: string;
   nameColor?: string;
   title?: string;
@@ -67,9 +67,10 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const typingStatusRef = useMemo(() => chatId ? ref(database, `typing_status/${chatId}`) : null, [chatId]);
   const currentUserTypingRef = useMemo(() => (chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [chatId, currentUser]);
 
+  // Centralized profile fetching logic to be used by various effects
+  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
+    if (usersCache[uid]) return usersCache[uid]; // Return cached if available
 
-  const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid];
     if (uid === 'ai-chatbot-uid' || uid === 'system') {
       const specialProfile: UserProfileData = {
           uid,
@@ -81,9 +82,10 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           isShinySilver: false,
           isAdmin: false,
       };
-      setUsersCache(prev => ({...prev, [uid]: specialProfile}));
+      setUsersCache(prev => ({ ...prev, [uid]: specialProfile }));
       return specialProfile;
     }
+
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
@@ -92,7 +94,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         const profile: UserProfileData = {
           uid,
           username: userData.username,
-          displayName: userData.username, 
+          displayName: userData.displayName || userData.username,
           avatar: userData.avatar,
           nameColor: userData.nameColor,
           title: userData.title,
@@ -100,28 +102,27 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           isShinySilver: userData.isShinySilver || false,
           isAdmin: userData.isAdmin || false,
         };
-        setUsersCache(prev => ({...prev, [uid]: profile}));
+        setUsersCache(prev => ({ ...prev, [uid]: profile }));
         return profile;
       }
       return null;
     } catch (error) {
-      console.error("Error fetching user profile:", error);
+      console.error(`Error fetching user profile for ${uid}:`, error);
       return null;
     }
-  }, [usersCache]);
+  }, [usersCache]); // Depends on usersCache to check existence
 
   useEffect(() => {
     if (currentUser) {
-      fetchUserProfile(currentUser.uid).then(profile => {
+      fetchAndCacheUserProfile(currentUser.uid).then(profile => {
         if (profile) {
           setCurrentUserProfile(profile);
         } else {
-          // Fallback if profile fetch fails or doesn't exist, though this case should be rare for an authenticated user
           const fallbackUsername = currentUser.email?.split('@')[0] || "user";
           setCurrentUserProfile({
             uid: currentUser.uid,
             username: fallbackUsername,
-            displayName: currentUser.displayName || fallbackUsername, // Use Firebase Auth displayName if available
+            displayName: currentUser.displayName || fallbackUsername,
             avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
             isShinyGold: false,
             isShinySilver: false,
@@ -130,15 +131,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         }
       });
     } else {
-      setCurrentUserProfile(null); // Clear profile if user logs out
+      setCurrentUserProfile(null);
     }
-  }, [currentUser, fetchUserProfile]);
+  }, [currentUser, fetchAndCacheUserProfile]);
 
 
   // Typing indicator listeners
   useEffect(() => {
     if (!typingStatusRef || chatType === 'ai' || isAnonymousMode || !currentUser?.uid) {
-      setTypingUsers({}); 
+      setTypingUsers({});
       return;
     }
 
@@ -165,8 +166,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   useEffect(() => {
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
-      if (chatId === 'ai-chatbot' && messages.length === 0) { // Only set initial AI message if none exist
-        fetchUserProfile('ai-chatbot-uid').then(aiProfile => {
+      if (chatId === 'ai-chatbot' && messages.length === 0) {
+        fetchAndCacheUserProfile('ai-chatbot-uid').then(aiProfile => {
             setMessages([
               {
                 id: 'ai-welcome',
@@ -184,14 +185,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             ]);
         });
       }
-      return; // No further Firebase listeners for AI chat type
+      return;
     }
 
-    // For non-AI chats, proceed only if currentUser exists AND chatId is valid.
-    // Parent component (ChatPage) now gates rendering, so currentUser should be valid if chatType is not 'ai'.
     if (!currentUser || !chatId) {
         setIsLoadingMessages(false);
-        setMessages([]); // Clear messages if no user or chatId
+        setMessages([]);
         return;
     }
 
@@ -199,7 +198,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     let messagesPath: string;
     if (chatType === 'gc') {
       messagesPath = `chats/${chatId}/messages`;
-    } else { 
+    } else {
       messagesPath = `chats/${chatId}`;
     }
 
@@ -214,13 +213,58 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         }
       });
 
-      const loadedMessagesPromises = messageDataArray.map(async (msgEntry) => {
+      const uidsInSnapshot = new Set<string>();
+      messageDataArray.forEach(msgEntry => {
+        if (msgEntry.data.senderUid) {
+          uidsInSnapshot.add(msgEntry.data.senderUid);
+        }
+      });
+      
+      const newProfilesToFetch: {[uid: string]: UserProfileData} = {};
+      const profileFetchPromises: Promise<void>[] = [];
+
+      Array.from(uidsInSnapshot).forEach(uid => {
+        if (!usersCache[uid] && uid !== 'system' && uid !== 'ai-chatbot-uid') {
+          profileFetchPromises.push(
+            get(ref(database, `users/${uid}`)).then(userSnapshot => {
+              if (userSnapshot.exists()) {
+                const userData = userSnapshot.val();
+                newProfilesToFetch[uid] = {
+                  uid,
+                  username: userData.username,
+                  displayName: userData.displayName || userData.username,
+                  avatar: userData.avatar,
+                  nameColor: userData.nameColor,
+                  title: userData.title,
+                  isShinyGold: userData.isShinyGold || false,
+                  isShinySilver: userData.isShinySilver || false,
+                  isAdmin: userData.isAdmin || false,
+                };
+              }
+            })
+          );
+        }
+      });
+      
+      await Promise.all(profileFetchPromises);
+
+      if (Object.keys(newProfilesToFetch).length > 0) {
+        setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
+      }
+      
+      const currentCombinedCache = { ...usersCache, ...newProfilesToFetch };
+
+      const resolvedMessages = messageDataArray.map((msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-        
         let profile: UserProfileData | null = null;
-        if (!isAnonymousMode || senderUid === currentUser?.uid) { 
-            profile = await fetchUserProfile(senderUid);
+
+        if (senderUid === 'system') {
+            profile = currentCombinedCache['system'] || { uid: 'system', username: 'system', displayName: 'System', avatar: `https://placehold.co/40x40.png?text=SYS`, nameColor: '#71717a', isShinyGold: false, isShinySilver: false, isAdmin: false };
+        } else if (senderUid === 'ai-chatbot-uid') {
+            profile = currentCombinedCache['ai-chatbot-uid'] || { uid: 'ai-chatbot-uid', username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: `https://placehold.co/40x40.png?text=AI`, nameColor: '#8B5CF6', isShinyGold: false, isShinySilver: false, isAdmin: false };
+        } else if (!isAnonymousMode || senderUid === currentUser?.uid) {
+            profile = currentCombinedCache[senderUid] || null;
         }
 
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
@@ -228,19 +272,19 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
         const messageObject: Message = {
             id: msgEntry.key!,
-            sender: profile?.displayName || msgData.senderName || "User",
+            sender: profile?.displayName || msgData.senderName || (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid' ? "Anonymous" : "User"),
             senderUid: senderUid,
-            senderUsername: profile?.username || msgData.senderUsername || "user",
+            senderUsername: profile?.username || msgData.senderUsername || (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid' ? "anonymous" : "user"),
             avatar: avatarUrl,
             content: msgData.content,
             originalTimestamp: msgData.timestamp,
             timestamp: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: senderUid === currentUser?.uid,
-            senderNameColor: profile?.nameColor || msgData.senderNameColor,
-            senderTitle: profile?.title || msgData.senderTitle,
-            senderIsShinyGold: profile?.isShinyGold || msgData.senderIsShinyGold || false,
-            senderIsShinySilver: profile?.isShinySilver || msgData.senderIsShinySilver || false,
-            senderIsAdmin: profile?.isAdmin || msgData.senderIsAdmin || false,
+            senderNameColor: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? undefined : (profile?.nameColor || msgData.senderNameColor),
+            senderTitle: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? undefined : (profile?.title || msgData.senderTitle),
+            senderIsShinyGold: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isShinyGold || msgData.senderIsShinyGold || false),
+            senderIsShinySilver: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isShinySilver || msgData.senderIsShinySilver || false),
+            senderIsAdmin: (isAnonymousMode && senderUid !== currentUser?.uid && senderUid !== 'system' && senderUid !== 'ai-chatbot-uid') ? false : (profile?.isAdmin || msgData.senderIsAdmin || false),
             reactions: msgData.reactions || {},
             chatType: chatType,
             readByRecipientTimestamp: msgData.readByRecipientTimestamp,
@@ -259,7 +303,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         return messageObject;
       });
 
-      const resolvedMessages = await Promise.all(loadedMessagesPromises);
       resolvedMessages.sort((a,b) => (a.originalTimestamp || 0) - (b.originalTimestamp || 0));
       setMessages(resolvedMessages);
       setIsLoadingMessages(false);
@@ -272,7 +315,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     return () => {
       off(messagesRefQuery, 'value', listener);
     };
-  }, [currentUser, chatType, chatId, toast, fetchUserProfile, isAnonymousMode]);
+  }, [currentUser, chatType, chatId, toast, isAnonymousMode, usersCache, fetchAndCacheUserProfile]); // Added usersCache here
 
 
   // Effect for auto-scrolling and detecting new messages while scrolled up
@@ -287,7 +330,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         setHasNewMessagesWhileScrolledUp(true);
       }
 
-      if (!showScrollToBottomButton) { 
+      if (!showScrollToBottomButton) {
         setTimeout(() => {
           viewport.scrollTop = viewport.scrollHeight;
         }, 0);
@@ -299,19 +342,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
   const handleSendMessage = async (content: string) => {
     if (!currentUser || !currentUserProfile) {
-       // For AI chat, if currentUser is null but currentUserProfile (for AI) is set, it might proceed.
-       // However, the input is disabled if !currentUserProfile. So this check is okay.
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
-    if (currentUserTypingRef && !isAnonymousMode) { 
+    if (currentUserTypingRef && !isAnonymousMode) {
         remove(currentUserTypingRef);
     }
 
     if (chatType === 'ai') {
         const userMessage: Message = {
             id: String(Date.now()),
-            sender: currentUserProfile.displayName, // This will be the logged-in user's name
+            sender: currentUserProfile.displayName,
             senderUid: currentUserProfile.uid,
             senderUsername: currentUserProfile.username,
             avatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
@@ -332,7 +373,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         try {
           const aiResponsePayload: AiChatInput = { message: content };
           const aiResult: AiChatOutput = await aiChat(aiResponsePayload);
-          const aiProfile = await fetchUserProfile('ai-chatbot-uid');
+          const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
 
           const aiResponseMessage: Message = {
             id: String(Date.now() + 1),
@@ -344,14 +385,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             originalTimestamp: Date.now(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isOwnMessage: false,
-            senderNameColor: aiProfile?.nameColor || '#8B5CF6', // Specific color for AI
+            senderNameColor: aiProfile?.nameColor || '#8B5CF6',
             chatType: 'ai',
           };
           setMessages(prev => [...prev, aiResponseMessage]);
         } catch (error: any) {
           console.error("Error calling AI chat flow or processing its response:", error);
           const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
-          const aiProfile = await fetchUserProfile('ai-chatbot-uid');
+          const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
           const errorMessage: Message = {
             id: String(Date.now() + 1),
             sender: aiProfile?.displayName || 'RealTalk AI',
@@ -377,8 +418,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         return;
     }
 
-    // This part is for non-AI chats, currentUser and currentUserProfile are guaranteed by ChatPage's gating
-    if (!chatId) { // Should not happen if ChatPage gates correctly
+    if (!chatId) {
         toast({ title: "Error", description: "Chat ID is missing.", variant: "destructive" });
         return;
     }
@@ -386,7 +426,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     let messagesDbRefPath: string;
     if (chatType === 'gc') {
       messagesDbRefPath = `chats/${chatId}/messages`;
-    } else { 
+    } else {
       messagesDbRefPath = `chats/${chatId}`;
     }
     const messagesDbRef = ref(database, messagesDbRefPath);
@@ -399,11 +439,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`),
       content,
       timestamp: serverTimestamp(),
-      reactions: {}, 
+      reactions: {},
     };
 
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
-    
+
     if (!isAnonymousMode) {
         newMessagePayload.senderIsShinyGold = currentUserProfile.isShinyGold || false;
         newMessagePayload.senderIsShinySilver = currentUserProfile.isShinySilver || false;
@@ -435,7 +475,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
   const typingDisplayMessage = useMemo(() => {
     if (isAnonymousMode && typingUsersArray.length > 0) return "Someone is typing...";
-    if (isAnonymousMode) return null; 
+    if (isAnonymousMode) return null;
 
     if (typingUsersArray.length === 0) return null;
     if (typingUsersArray.length === 1) return `${typingUsersArray[0]} is typing...`;
@@ -496,7 +536,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   }, []);
 
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
-    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return; 
+    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return;
 
     const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
@@ -506,7 +546,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         if (currentData === null) {
           return { count: 1, users: { [currentUser.uid]: true } };
         }
-        
+
         const currentUsers = currentData.users || {};
         if (currentUsers[currentUser.uid]) {
           currentData.count = (currentData.count || 0) - 1;
@@ -564,7 +604,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardContent className="flex-1 overflow-hidden p-0 relative">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1">
-            {isLoadingMessages && (!messages || messages.length === 0) ? ( 
+            {isLoadingMessages && (!messages || messages.length === 0) ? (
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -594,7 +634,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                     isContinuation={isContinuation}
                     onToggleReaction={handleToggleReaction}
                     chatId={chatId}
-                    isAnonymousContext={isAnonymousMode} 
+                    isAnonymousContext={isAnonymousMode}
                   />
                 );
               })
@@ -639,9 +679,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={(chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)} // Disable if AI responding, or if not AI chat and no current user
+            disabled={(chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)}
             chatId={chatId}
-            currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile} 
+            currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile}
         />
       </CardFooter>
     </Card>
