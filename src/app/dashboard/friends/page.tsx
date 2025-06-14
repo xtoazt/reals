@@ -87,7 +87,10 @@ export default function FriendsPage() {
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
 
-  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<void> => {
+  // Use useCallback for fetchAndCacheUserProfile to stabilize its reference
+  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
+    // Removed usersCache from dependencies here, as it's a "write-only" from this function's perspective
+    // The actual state update is done via setUsersCache, which is stable.
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
@@ -105,14 +108,17 @@ export default function FriendsPage() {
           friendsCount: userData.friendsCount,
         };
         setUsersCache(prev => ({ ...prev, [uid]: profile }));
+        return profile;
       } else {
         setUsersCache(prev => ({ ...prev, [uid]: null }));
+        return null;
       }
     } catch (error) {
       console.error(`Error fetching user profile for ${uid}:`, error);
       setUsersCache(prev => ({ ...prev, [uid]: null }));
+      return null;
     }
-  }, []); // setUsersCache from useState is stable
+  }, []); // Empty dependency array means this function's reference is stable
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -121,7 +127,7 @@ export default function FriendsPage() {
         setCurrentUserProfile(null);
         setRawFriendRequests({});
         setRawFriends({});
-        setUsersCache({});
+        // setUsersCache({}); // Consider if cache should persist across logout/login
         setFriendRequests([]);
         setFriends([]);
         setIsLoadingRequests(false);
@@ -132,12 +138,14 @@ export default function FriendsPage() {
   }, []);
 
   useEffect(() => {
+    // Fetch current user's profile if logged in and not in cache
     if (currentUser?.uid && usersCache[currentUser.uid] === undefined) {
       fetchAndCacheUserProfile(currentUser.uid);
     }
-  }, [currentUser?.uid, usersCache, fetchAndCacheUserProfile]); // Changed currentUser to currentUser?.uid
+  }, [currentUser?.uid, usersCache, fetchAndCacheUserProfile]); // Depend on currentUser.uid
 
   useEffect(() => {
+    // Set current user profile from cache once available
     if (currentUser && usersCache[currentUser.uid]) {
       setCurrentUserProfile(usersCache[currentUser.uid]);
     } else if (!currentUser) { 
@@ -656,3 +664,5 @@ export default function FriendsPage() {
     </div>
   );
 }
+
+    

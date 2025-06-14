@@ -49,7 +49,7 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
-// Utility function to fetch user profile data
+// Utility function to fetch user profile data - DOES NOT MUTATE STATE
 async function fetchUserProfileDataUtil(uid: string): Promise<UserProfileData | null> {
   if (uid === 'ai-chatbot-uid') {
     return {
@@ -97,7 +97,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const [isAiResponding, setIsAiResponding] = useState(false);
   const scrollAreaViewportRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData | null}>({}); // Allow null for not found
+  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData | null}>({});
   const [typingUsers, setTypingUsers] = useState<{[uid: string]: TypingStatus}>({});
 
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
@@ -111,31 +111,35 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   useEffect(() => {
-    if (authResolved && currentUser) {
-      if (!usersCache[currentUser.uid]) { // Fetch current user's profile if not in cache
+    if (!authResolved) return; // Wait for auth to be resolved by parent
+
+    if (currentUser) {
+      // Check if current user's profile is in cache or needs fetching
+      if (!usersCache[currentUser.uid]) {
         fetchUserProfileDataUtil(currentUser.uid).then(profile => {
           if (profile) {
             setUsersCache(prev => ({ ...prev, [currentUser.uid!]: profile }));
             setCurrentUserProfile(profile);
-          } else { // Fallback if profile fetch fails or doesn't exist (should be rare for current user)
+          } else {
             const fallbackUsername = currentUser.email?.split('@')[0] || "user";
             const fallbackProfile: UserProfileData = {
               uid: currentUser.uid, username: fallbackUsername,
               displayName: currentUser.displayName || fallbackUsername,
               avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
-              isShinyGold: false, isShinySilver: false, isAdmin: false,
             };
             setUsersCache(prev => ({ ...prev, [currentUser.uid!]: fallbackProfile }));
             setCurrentUserProfile(fallbackProfile);
           }
         });
-      } else { // Profile is in cache
+      } else {
+        // Profile is in cache, set it
         setCurrentUserProfile(usersCache[currentUser.uid]);
       }
-    } else if (!currentUser) { 
+    } else {
+      // No current user / logged out
       setCurrentUserProfile(null);
     }
-  }, [authResolved, currentUser, usersCache]);
+  }, [authResolved, currentUser, usersCache]); // usersCache is a dependency to re-derive currentUserProfile if cache updates
 
 
   useEffect(() => {
@@ -164,7 +168,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   useEffect(() => {
-    if (!authResolved) { // Primary gate based on ChatPage's auth resolution
+    if (!authResolved) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -220,21 +224,26 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         if (msgEntry.data.senderUid) uidsInSnapshot.add(msgEntry.data.senderUid);
       });
       
-      const newlyFetchedProfiles: Record<string, UserProfileData | null> = {};
-      let shouldUpdateCache = false;
+      const newProfilesToFetch: Record<string, UserProfileData | null> = {};
+      const profilesToFetchPromises: Promise<void>[] = [];
 
-      for (const uid of Array.from(uidsInSnapshot)) {
-        if (usersCache[uid] === undefined) { // Check if undefined (not fetched yet), null means fetched but not found
-          const profile = await fetchUserProfileDataUtil(uid);
-          newlyFetchedProfiles[uid] = profile; // Store even if null to mark as "attempted fetch"
-          if (profile) shouldUpdateCache = true; // Only trigger cache update if a profile was actually found
+      uidsInSnapshot.forEach(uid => {
+        if (usersCache[uid] === undefined) { // Fetch only if not attempted before (undefined, not null)
+          profilesToFetchPromises.push(
+            fetchUserProfileDataUtil(uid).then(profile => {
+              newProfilesToFetch[uid] = profile; // Store fetched profile (or null if not found)
+            })
+          );
         }
+      });
+      
+      await Promise.all(profilesToFetchPromises);
+
+      if (Object.keys(newProfilesToFetch).length > 0) {
+        setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
       }
       
-      if (shouldUpdateCache || Object.values(newlyFetchedProfiles).some(p => p === null && usersCache[p as unknown as string] === undefined)) { // Also update cache if we marked some as null
-        setUsersCache(prevCache => ({ ...prevCache, ...newlyFetchedProfiles }));
-      }
-      const currentCombinedCache = { ...usersCache, ...newlyFetchedProfiles };
+      const currentCombinedCache = { ...usersCache, ...newProfilesToFetch }; // Use immediately for this render pass
 
       const resolvedMessages = messageDataArray.map((msgEntry) => {
         const msgData = msgEntry.data;
@@ -602,3 +611,5 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     </Card>
   );
 }
+
+    
