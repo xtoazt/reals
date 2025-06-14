@@ -35,7 +35,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
-  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
+  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global'); // Default to global to avoid issues
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
 
@@ -46,15 +46,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      // setIsLoading(false); // Initial loading should be handled by chat data fetching
     });
     return () => unsubscribe();
-  }, []); // Changed dependency from [router] to []
+  }, []);
 
   useEffect(() => {
-    setIsLoading(true); // Set loading true at the start of this effect
+    setIsLoading(true);
     let determinedTitle = '';
-    let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
+    let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global'; // Ensure a default
     let determinedAnonymousMode = false;
 
     const setupChat = async () => {
@@ -77,7 +76,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       } else if (resolvedChatId === 'ai-chatbot') {
         determinedTitle = 'AI Chatbot';
         determinedType = 'ai';
-        setIsLoading(false); // AI chat doesn't need current user for initial title
+        // AI chat doesn't need current user for initial title, can set loading false sooner
+        // but we'll let the main flow handle it for consistency.
       } else if (resolvedChatId && resolvedChatId.startsWith('dm_')) {
         determinedType = 'dm';
         if (currentUser && currentUser.uid) { 
@@ -109,12 +109,12 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 determinedTitle = "Invalid DM";
             }
           }
-        } else if (!currentUser && chatType !== 'ai') { // Only set loading if DM requires current user
-          setChatTitle('Loading DM...');
-          // setIsLoading remains true or is set by this effect's start
-          return; 
+        } else if (!currentUser && determinedType === 'dm') { // Check determinedType, not 'chatType' state
+          setChatTitle('Loading DM...'); // Placeholder while waiting for user
+          // setIsLoading remains true, will be handled by main logic or next effect run
+          return; // Early return to wait for currentUser
         } else {
-            determinedTitle = 'Direct Message';
+            determinedTitle = 'Direct Message'; // Fallback if currentUser somehow null but logic proceeded
         }
       } else if (resolvedChatId && resolvedChatId.startsWith('gc-')) {
         determinedType = 'gc';
@@ -136,6 +136,10 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
             console.error("Error fetching GC details:", error);
             determinedTitle = "Error Loading GC";
         }
+         if (!currentUser && determinedType === 'gc') { // Check determinedType
+            setChatTitle('Loading Group Chat...');
+            return; // Early return
+        }
       } else {
         determinedTitle = "Invalid Chat";
       }
@@ -143,52 +147,54 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       setChatTitle(determinedTitle);
       setChatType(determinedType);
       setIsAnonymousMode(determinedAnonymousMode);
-      setIsLoading(false); // Set loading to false after all async operations complete or determined invalid
+      setIsLoading(false);
     };
 
-    // Only run setupChat if currentUser is resolved (for non-AI chats) or if it's an AI chat
-    if (currentUser !== undefined) { // Check if auth state is resolved
-      if (chatType === 'ai' || currentUser) { // If AI chat, or if user is logged in for other chats
-        setupChat();
-      } else if (!currentUser && chatType !== 'ai') {
-        // User is not logged in, and it's not an AI chat, show loading or an appropriate message
-        // This case might mean we wait for currentUser to become non-null or redirect.
-        // For now, if setupChat requires currentUser and it's null, it handles it internally.
-        // If chat is of a type that requires login, and user is null, we might want to prevent setupChat
-        // or let setupChat determine it's an invalid state.
-        // The current logic in setupChat seems to handle cases where currentUser is needed.
-        // We ensure setIsLoading(false) is called if setupChat doesn't run or bails early.
-         if (resolvedChatId && (resolvedChatId.startsWith('dm_') || resolvedChatId.startsWith('gc-'))) {
-            // Waiting for currentUser for DM/GC title
-         } else if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
-           setupChat(); // These global chats can set title without current user initially.
-         } else if (!resolvedChatId || resolvedChatId === 'ai-chatbot'){
-           setupChat(); // AI chat or invalid (will be caught)
-         } else {
-           setIsLoading(false); // If no specific path taken, ensure loading is false.
-         }
-      }
-    }
-
-
-  }, [resolvedChatId, currentUser, chatType]); // Added chatType as a dependency
-
-  // This effect ensures isLoading is false if currentUser becomes known as null and chat is not AI
-  useEffect(() => {
-    if (currentUser === null && chatType !== 'ai') {
-        // If the chat type isn't AI and we know the user is logged out,
-        // and if a title hasn't been set (e.g. for DM/GC that failed to load),
-        // we might want to force isLoading to false or show an auth required message.
-        // The main setupChat effect tries to handle this, but as a safeguard:
-        if (!chatTitle && (resolvedChatId.startsWith('dm_') || resolvedChatId.startsWith('gc-'))) {
-             setChatTitle("Authentication Required"); // Or some placeholder
+    if (currentUser !== undefined) { // Auth state resolved (either user or null)
+        // For global and AI chats, setup can proceed even if currentUser is null.
+        // For DM and GC, setup proceeds only if currentUser is available (non-null).
+        if (determinedType === 'dm' || determinedType === 'gc') {
+            if (currentUser) {
+                setupChat();
+            } else {
+                // Waiting for currentUser for DM/GC.
+                // isLoading remains true. Error/auth message handled by render logic.
+                // Potentially set a specific "Authentication Required" title here if desired for these types.
+                if (resolvedChatId && (resolvedChatId.startsWith('dm_') || resolvedChatId.startsWith('gc-'))) {
+                    setChatTitle("Authentication Required"); // More specific title while loading/waiting
+                }
+                // setIsLoading remains true or will be false if previous run set it.
+                // The main render logic will show loading or "Auth Required"
+            }
+        } else { // For 'global', 'ai', or invalid types
+            setupChat();
         }
-        if (isLoading) setIsLoading(false); // Ensure loading is false if stuck
+    }
+    // If currentUser is undefined, isLoading remains true, and "Loading chat..." is shown.
+    // The effect will re-run when currentUser resolves.
+
+  }, [resolvedChatId, currentUser]); // Removed chatType, relying on determinedType internally
+
+  useEffect(() => {
+    // This effect primarily handles the case where auth state resolves to null
+    // and the chat type requires authentication, ensuring isLoading is false.
+    if (currentUser === null) { // User is definitely logged out
+      if (chatType === 'dm' || chatType === 'gc') {
+        if (!chatTitle || chatTitle === 'Loading DM...' || chatTitle === 'Loading Group Chat...') {
+          setChatTitle("Authentication Required");
+        }
+      }
+      // For global/AI chats, or if title is already set (e.g. to "Anonymous Chat"),
+      // isLoading might have already been set to false by the main effect.
+      // This ensures it becomes false if it was stuck.
+      if (isLoading) {
+        setIsLoading(false);
+      }
     }
   }, [currentUser, chatType, resolvedChatId, chatTitle, isLoading]);
 
 
-  if (isLoading || currentUser === undefined ) { // currentUser === undefined means auth state not yet resolved
+  if (isLoading || currentUser === undefined ) { 
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -197,6 +203,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     );
   }
   
+  // If not loading, but chat couldn't be set up (e.g. invalid, access denied, or auth needed for DM/GC)
   if (!isLoading && (!chatTitle || chatTitle === "Invalid DM" || chatTitle === "Access Denied to GC" || chatTitle === "Group Chat Not Found" || chatTitle === "Error Loading GC" || chatTitle === "Invalid Chat" || chatTitle === "Authentication Required")) { 
       return (
         <div className="flex flex-col justify-center items-center h-full text-center p-4">
@@ -216,9 +223,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         chatType={chatType}
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
-        currentUser={currentUser} // Pass currentUser as a prop
+        currentUser={currentUser}
       />
     </div>
   );
 }
-
