@@ -470,4 +470,3 @@ export function TopNavBar() {
     </header>
   );
 }
-
