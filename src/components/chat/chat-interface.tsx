@@ -9,8 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown, ThumbsUp, Heart } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { database } from '@/lib/firebase'; // Removed auth, will use currentUser prop
-import { type User as FirebaseUser } from 'firebase/auth'; // Keep type
+import { database, auth } from '@/lib/firebase';
+import { type User as FirebaseUser } from 'firebase/auth';
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove, runTransaction, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
@@ -22,7 +22,8 @@ interface ChatInterfaceProps {
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
   isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null; // Added currentUser prop
+  currentUser: FirebaseUser | null;
+  authResolved: boolean; // New prop
 }
 
 interface UserProfileData {
@@ -48,9 +49,8 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
-export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser }: ChatInterfaceProps) {
+export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, authResolved }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  // Removed internal currentUser state, will use prop
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isAiResponding, setIsAiResponding] = useState(false);
@@ -111,7 +111,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     }
   }, [usersCache]);
 
-  // Effect to derive currentUserProfile from currentUser prop
   useEffect(() => {
     if (currentUser) {
       fetchUserProfile(currentUser.uid).then(profile => {
@@ -132,17 +131,16 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       });
     } else {
       setCurrentUserProfile(null);
-      if (chatType !== 'ai') {
-        setMessages([]); // Clear messages if user logs out and it's not AI chat
-      }
-       // setIsLoadingMessages(false); // Let message listener handle this based on currentUser
     }
-  }, [currentUser, fetchUserProfile, chatType]);
+  }, [currentUser, fetchUserProfile]);
 
 
   // Typing indicator listeners
   useEffect(() => {
-    if (!typingStatusRef || chatType === 'ai' || isAnonymousMode) return; // Disable typing for anonymous mode
+    if (!authResolved || !typingStatusRef || chatType === 'ai' || isAnonymousMode || !currentUser?.uid) {
+      setTypingUsers({}); // Clear typing users if conditions not met
+      return;
+    }
 
     const listener = onValue(typingStatusRef, (snapshot) => {
         const data = snapshot.val();
@@ -160,11 +158,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     });
 
     return () => off(typingStatusRef, 'value', listener);
-  }, [typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
+  }, [authResolved, typingStatusRef, currentUser?.uid, chatType, isAnonymousMode]);
 
 
   // Message listeners
   useEffect(() => {
+    if (!authResolved && chatType !== 'ai') { // For non-AI chats, wait for auth to be resolved
+        setIsLoadingMessages(false);
+        setMessages([]);
+        return;
+    }
+
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
       if (chatId === 'ai-chatbot' && messages.length === 0) {
@@ -192,7 +196,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       return;
     }
 
-    if (!currentUser || !chatId) { // Rely on currentUser prop
+    // For non-AI chats, proceed only if auth is resolved AND currentUser exists.
+    // If authResolved is true but currentUser is null, it means user is logged out.
+    if (!currentUser || !chatId) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -275,7 +281,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     return () => {
       off(messagesRefQuery, 'value', listener);
     };
-  }, [currentUser, chatType, chatId, toast, fetchUserProfile, isAnonymousMode]);
+  }, [authResolved, currentUser, chatType, chatId, toast, fetchUserProfile, isAnonymousMode]);
 
 
   // Effect for auto-scrolling and detecting new messages while scrolled up
@@ -431,7 +437,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   };
 
   const typingUsersArray = useMemo(() => {
-    if (isAnonymousMode) { // For anonymous mode, check if anyone is typing.
+    if (isAnonymousMode) {
         return Object.values(typingUsers).some(u => u.isTyping && (Date.now() - u.timestamp < TYPING_TIMEOUT_MS)) ? ["Someone is typing..."] : [];
     }
     return Object.values(typingUsers)
@@ -441,7 +447,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
   const typingDisplayMessage = useMemo(() => {
     if (isAnonymousMode && typingUsersArray.length > 0) return "Someone is typing...";
-    if (isAnonymousMode) return null; // No display if no one is typing in anonymous mode
+    if (isAnonymousMode) return null; 
 
     if (typingUsersArray.length === 0) return null;
     if (typingUsersArray.length === 1) return `${typingUsersArray[0]} is typing...`;
@@ -570,7 +576,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardContent className="flex-1 overflow-hidden p-0 relative">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1">
-            {isLoadingMessages && (!messages || messages.length === 0) ? ( // Show loader only if messages are empty and loading
+            {isLoadingMessages && (!messages || messages.length === 0) ? ( 
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -653,4 +659,3 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     </Card>
   );
 }
-

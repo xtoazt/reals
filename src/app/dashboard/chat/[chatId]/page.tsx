@@ -32,9 +32,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const unwrappedChatId = params.chatId;
 
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined);
-  const [authResolved, setAuthResolved] = useState(false); // New state to track auth resolution
-  const [isLoading, setIsLoading] = useState(true); // General loading for chat data, initially true
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined); // undefined means auth state not yet known
+  const [authResolved, setAuthResolved] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // General loading for chat data
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
@@ -47,48 +47,44 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      setAuthResolved(true); // Mark that Firebase auth state has been determined
+      setAuthResolved(true);
     });
     return () => unsubscribe();
-  }, []); // Runs once on mount
+  }, []);
 
   useEffect(() => {
-    if (!authResolved) {
-      setIsLoading(true); // Keep loading if auth state is not yet resolved
+    if (!authResolved || !resolvedChatId) {
+      setIsLoading(true); // Keep loading if auth state is not yet resolved or chatId is not resolved
       return;
     }
 
-    setIsLoading(true); // Start loading for chat-specific data
-
-    let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
-    if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
-      determinedInitialType = 'global';
-    } else if (resolvedChatId === 'ai-chatbot') {
-      determinedInitialType = 'ai';
-    } else if (resolvedChatId?.startsWith('dm_')) {
-      determinedInitialType = 'dm';
-    } else if (resolvedChatId?.startsWith('gc-')) {
-      determinedInitialType = 'gc';
-    }
-
     const performChatSetup = async () => {
+      setIsLoading(true); // Start loading for chat-specific data
+
+      let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
+      if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
+        determinedInitialType = 'global';
+      } else if (resolvedChatId === 'ai-chatbot') {
+        determinedInitialType = 'ai';
+      } else if (resolvedChatId?.startsWith('dm_')) {
+        determinedInitialType = 'dm';
+      } else if (resolvedChatId?.startsWith('gc-')) {
+        determinedInitialType = 'gc';
+      }
+      
       let titleToSet = '';
       let typeToSet = determinedInitialType;
       let anonymousModeToSet = false;
 
-      // currentUser is now guaranteed to be either a User object or null, not undefined
+      // currentUser is now guaranteed to be either a User object or null, because authResolved is true.
       if (currentUser === null) {
-        // For non-AI chats, authentication is required by rules.
-        // AI chat can handle null user (though ChatInterface might still need profile for "sender")
-        if (determinedInitialType !== 'ai') {
+        if (determinedInitialType !== 'ai') { // Non-AI chats require auth
             titleToSet = "Authentication Required";
         } else {
-            // AI chat specific setup if needed for logged-out user (e.g. guest mode title)
-            titleToSet = 'AI Chatbot'; // Default for AI chat even if logged out
+            titleToSet = 'AI Chatbot'; // AI chat can proceed even if logged out
             typeToSet = 'ai';
         }
-      } else {
-        // CurrentUser is a valid FirebaseUser object
+      } else { // CurrentUser is a valid FirebaseUser object
         if (resolvedChatId === 'global') {
           titleToSet = 'Global Chat'; typeToSet = 'global';
         } else if (resolvedChatId === 'global-unblocked') {
@@ -113,14 +109,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 const userData = snapshot.val() as UserProfileData;
                 titleToSet = `Chat with ${userData.displayName || 'User'}`;
               } else {
-                titleToSet = 'Chat with User (Not Found)'; // More specific
+                titleToSet = 'Chat with User (Not Found)';
               }
             } catch (error) {
               console.error("Error fetching DM user profile:", error);
-              titleToSet = 'Error Loading DM'; // More specific
+              titleToSet = 'Error Loading DM';
             }
           } else {
-            titleToSet = "Invalid DM Chat"; // More specific
+            titleToSet = "Invalid DM Chat";
           }
         } else if (resolvedChatId?.startsWith('gc-')) {
           typeToSet = 'gc';
@@ -131,17 +127,17 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
               const gcData = gcSnapshot.val() as GCChatData;
               titleToSet = gcData.gcName || `Group Chat: ${resolvedChatId.substring(3, 15)}...`;
               if (!gcData.members || !gcData.members[currentUser.uid]) {
-                titleToSet = "Access Denied to Group Chat"; // More specific
+                titleToSet = "Access Denied to Group Chat";
               }
             } else {
               titleToSet = "Group Chat Not Found";
             }
           } catch (error) {
             console.error("Error fetching GC details:", error);
-            titleToSet = "Error Loading Group Chat"; // More specific
+            titleToSet = "Error Loading Group Chat";
           }
         } else {
-          titleToSet = "Invalid Chat ID"; // More specific
+          titleToSet = "Invalid Chat ID";
         }
       }
 
@@ -156,7 +152,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   }, [resolvedChatId, currentUser, authResolved]); // Depend on authResolved
 
 
-  if (!authResolved || isLoading) { // Show loading if auth not resolved OR chat data is loading
+  if (!authResolved || isLoading) {
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -168,9 +164,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   // At this point, auth is resolved, and initial chat data loading attempt is complete.
   // currentUser is either a User object or null.
 
-  const chatNeedsAuthToView = chatType !== 'ai'; // Assuming only AI chat might allow unauthenticated view
+  const chatNeedsAuthToView = chatType !== 'ai';
   if (chatNeedsAuthToView && currentUser === null) {
-      // This is a more direct check for auth requirement for non-AI chats
       return (
         <div className="flex flex-col justify-center items-center h-full text-center p-4">
           <p className="text-lg font-semibold">Authentication Required</p>
@@ -182,14 +177,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       );
   }
   
-  // Handle specific error titles that imply user might be logged in but chat is inaccessible/invalid
   const errorTitles = [
-    "Authentication Required", // This can still be set by performChatSetup for AI if logic changes
+    "Authentication Required", 
     "Invalid DM Chat", "Chat with User (Not Found)", "Error Loading DM",
     "Access Denied to Group Chat", "Group Chat Not Found", "Error Loading Group Chat",
     "Invalid Chat ID"
   ];
-  if (errorTitles.includes(chatTitle)) {
+
+  if (errorTitles.includes(chatTitle) && !(chatType === 'ai' && chatTitle === 'Authentication Required')) {
       return (
         <div className="flex flex-col justify-center items-center h-full text-center p-4">
           <p className="text-lg font-semibold">{chatTitle === "Authentication Required" ? "Authentication Required" : "Could not load chat."}</p>
@@ -213,7 +208,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         chatType={chatType}
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
-        currentUser={currentUser} // Can be null for AI chat, or if future chats allow anon view
+        currentUser={currentUser}
+        authResolved={authResolved} // Pass authResolved down
       />
     </div>
   );
