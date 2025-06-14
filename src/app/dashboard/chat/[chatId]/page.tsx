@@ -46,12 +46,13 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      // setIsLoading(false); // Initial loading should be handled by chat data fetching
     });
     return () => unsubscribe();
-  }, [router]);
+  }, []); // Changed dependency from [router] to []
 
   useEffect(() => {
-    setIsLoading(true);
+    setIsLoading(true); // Set loading true at the start of this effect
     let determinedTitle = '';
     let determinedType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
     let determinedAnonymousMode = false;
@@ -76,6 +77,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       } else if (resolvedChatId === 'ai-chatbot') {
         determinedTitle = 'AI Chatbot';
         determinedType = 'ai';
+        setIsLoading(false); // AI chat doesn't need current user for initial title
       } else if (resolvedChatId && resolvedChatId.startsWith('dm_')) {
         determinedType = 'dm';
         if (currentUser && currentUser.uid) { 
@@ -107,9 +109,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
                 determinedTitle = "Invalid DM";
             }
           }
-        } else if (!currentUser) {
+        } else if (!currentUser && chatType !== 'ai') { // Only set loading if DM requires current user
           setChatTitle('Loading DM...');
-          setIsLoading(true); 
+          // setIsLoading remains true or is set by this effect's start
           return; 
         } else {
             determinedTitle = 'Direct Message';
@@ -136,21 +138,57 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         }
       } else {
         determinedTitle = "Invalid Chat";
-        setIsLoading(false);
-        return;
       }
       
       setChatTitle(determinedTitle);
       setChatType(determinedType);
       setIsAnonymousMode(determinedAnonymousMode);
-      setIsLoading(false);
+      setIsLoading(false); // Set loading to false after all async operations complete or determined invalid
     };
 
-    setupChat();
+    // Only run setupChat if currentUser is resolved (for non-AI chats) or if it's an AI chat
+    if (currentUser !== undefined) { // Check if auth state is resolved
+      if (chatType === 'ai' || currentUser) { // If AI chat, or if user is logged in for other chats
+        setupChat();
+      } else if (!currentUser && chatType !== 'ai') {
+        // User is not logged in, and it's not an AI chat, show loading or an appropriate message
+        // This case might mean we wait for currentUser to become non-null or redirect.
+        // For now, if setupChat requires currentUser and it's null, it handles it internally.
+        // If chat is of a type that requires login, and user is null, we might want to prevent setupChat
+        // or let setupChat determine it's an invalid state.
+        // The current logic in setupChat seems to handle cases where currentUser is needed.
+        // We ensure setIsLoading(false) is called if setupChat doesn't run or bails early.
+         if (resolvedChatId && (resolvedChatId.startsWith('dm_') || resolvedChatId.startsWith('gc-'))) {
+            // Waiting for currentUser for DM/GC title
+         } else if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
+           setupChat(); // These global chats can set title without current user initially.
+         } else if (!resolvedChatId || resolvedChatId === 'ai-chatbot'){
+           setupChat(); // AI chat or invalid (will be caught)
+         } else {
+           setIsLoading(false); // If no specific path taken, ensure loading is false.
+         }
+      }
+    }
 
-  }, [resolvedChatId, currentUser]); 
 
-  if (isLoading && !chatTitle) { 
+  }, [resolvedChatId, currentUser, chatType]); // Added chatType as a dependency
+
+  // This effect ensures isLoading is false if currentUser becomes known as null and chat is not AI
+  useEffect(() => {
+    if (currentUser === null && chatType !== 'ai') {
+        // If the chat type isn't AI and we know the user is logged out,
+        // and if a title hasn't been set (e.g. for DM/GC that failed to load),
+        // we might want to force isLoading to false or show an auth required message.
+        // The main setupChat effect tries to handle this, but as a safeguard:
+        if (!chatTitle && (resolvedChatId.startsWith('dm_') || resolvedChatId.startsWith('gc-'))) {
+             setChatTitle("Authentication Required"); // Or some placeholder
+        }
+        if (isLoading) setIsLoading(false); // Ensure loading is false if stuck
+    }
+  }, [currentUser, chatType, resolvedChatId, chatTitle, isLoading]);
+
+
+  if (isLoading || currentUser === undefined ) { // currentUser === undefined means auth state not yet resolved
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -159,12 +197,14 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     );
   }
   
-  if (!isLoading && (!chatTitle || chatTitle === "Invalid DM" || chatTitle === "Access Denied to GC" || chatTitle === "Group Chat Not Found" || chatTitle === "Error Loading GC" || chatTitle === "Invalid Chat")) { 
+  if (!isLoading && (!chatTitle || chatTitle === "Invalid DM" || chatTitle === "Access Denied to GC" || chatTitle === "Group Chat Not Found" || chatTitle === "Error Loading GC" || chatTitle === "Invalid Chat" || chatTitle === "Authentication Required")) { 
       return (
         <div className="flex flex-col justify-center items-center h-full text-center p-4">
-          <p className="text-lg font-semibold">Could not load chat information.</p>
-          <p className="text-muted-foreground">The chat may be invalid, not found, or you might not have access.</p>
-          <Button onClick={() => router.push('/dashboard')} className="mt-4">Go to Dashboard</Button>
+          <p className="text-lg font-semibold">{chatTitle === "Authentication Required" ? "Authentication Required" : "Could not load chat information."}</p>
+          <p className="text-muted-foreground">{chatTitle === "Authentication Required" ? "Please log in to access this chat." : "The chat may be invalid, not found, or you might not have access."}</p>
+          <Button onClick={() => router.push(chatTitle === "Authentication Required" ? '/auth' : '/dashboard')} className="mt-4">
+            {chatTitle === "Authentication Required" ? "Go to Login" : "Go to Dashboard"}
+          </Button>
         </div>
       );
   }
@@ -176,7 +216,9 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         chatType={chatType}
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
+        currentUser={currentUser} // Pass currentUser as a prop
       />
     </div>
   );
 }
+

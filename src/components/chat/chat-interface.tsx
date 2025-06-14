@@ -9,8 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown, ThumbsUp, Heart } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { auth, database } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { database } from '@/lib/firebase'; // Removed auth, will use currentUser prop
+import { type User as FirebaseUser } from 'firebase/auth'; // Keep type
 import { ref, onValue, push, serverTimestamp, query, orderByChild, limitToLast, off, get, set, remove, runTransaction, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
@@ -21,7 +21,8 @@ interface ChatInterfaceProps {
   chatTitle: string;
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
-  isAnonymousMode?: boolean; // Added prop
+  isAnonymousMode?: boolean;
+  currentUser: FirebaseUser | null; // Added currentUser prop
 }
 
 interface UserProfileData {
@@ -47,9 +48,9 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
-export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false }: ChatInterfaceProps) {
+export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  // Removed internal currentUser state, will use prop
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isAiResponding, setIsAiResponding] = useState(false);
@@ -110,36 +111,34 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     }
   }, [usersCache]);
 
+  // Effect to derive currentUserProfile from currentUser prop
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      if (user) {
-        fetchUserProfile(user.uid).then(profile => {
-            if(profile) {
-                setCurrentUserProfile(profile);
-            } else {
-                const fallbackUsername = user.email?.split('@')[0] || "user";
-                setCurrentUserProfile({
-                    uid: user.uid,
-                    username: fallbackUsername,
-                    displayName: fallbackUsername, 
-                    avatar: `https://placehold.co/40x40.png?text=${(user.displayName || "U").charAt(0)}`,
-                    isShinyGold: false,
-                    isShinySilver: false,
-                    isAdmin: false,
-                });
-            }
-        });
-      } else {
-        setCurrentUserProfile(null);
-        if (chatType !== 'ai') {
-            setMessages([]);
+    if (currentUser) {
+      fetchUserProfile(currentUser.uid).then(profile => {
+        if (profile) {
+          setCurrentUserProfile(profile);
+        } else {
+          const fallbackUsername = currentUser.email?.split('@')[0] || "user";
+          setCurrentUserProfile({
+            uid: currentUser.uid,
+            username: fallbackUsername,
+            displayName: fallbackUsername,
+            avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
+            isShinyGold: false,
+            isShinySilver: false,
+            isAdmin: false,
+          });
         }
-        if (chatType !== 'ai') setIsLoadingMessages(false);
+      });
+    } else {
+      setCurrentUserProfile(null);
+      if (chatType !== 'ai') {
+        setMessages([]); // Clear messages if user logs out and it's not AI chat
       }
-    });
-    return () => unsubscribeAuth();
-  }, [fetchUserProfile, chatType]);
+       // setIsLoadingMessages(false); // Let message listener handle this based on currentUser
+    }
+  }, [currentUser, fetchUserProfile, chatType]);
+
 
   // Typing indicator listeners
   useEffect(() => {
@@ -153,8 +152,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             Object.entries(data).forEach(([uid, status]) => {
                 const typingInfo = status as {isTyping: boolean, timestamp: number, displayName?: string};
                 if (uid !== currentUser?.uid && typingInfo.isTyping && (now - typingInfo.timestamp < TYPING_TIMEOUT_MS)) {
-                    // In anonymous mode, we don't fetch/display specific user names for typing
-                    activeTypers[uid] = {...typingInfo, displayName: "Someone" };
+                    activeTypers[uid] = {...typingInfo, displayName: isAnonymousMode ? "Someone" : (typingInfo.displayName || "Someone") };
                 }
             });
         }
@@ -194,7 +192,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       return;
     }
 
-    if (!currentUser || !chatId) {
+    if (!currentUser || !chatId) { // Rely on currentUser prop
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -224,7 +222,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         const senderUid = msgData.senderUid;
         
         let profile: UserProfileData | null = null;
-        if (!isAnonymousMode || senderUid === currentUser?.uid) { // Fetch profile if not anon or own message
+        if (!isAnonymousMode || senderUid === currentUser?.uid) { 
             profile = await fetchUserProfile(senderUid);
         }
 
@@ -307,7 +305,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
-    if (currentUserTypingRef && !isAnonymousMode) { // Clear typing only if not anonymous
+    if (currentUserTypingRef && !isAnonymousMode) { 
         remove(currentUserTypingRef);
     }
 
@@ -402,7 +400,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
     const baseMessagePayload = {
       senderUid: currentUserProfile.uid,
-      // For anonymous mode, we still store the real UID, but display name and avatar will be generic
       senderName: isAnonymousMode ? "Anonymous" : currentUserProfile.displayName,
       senderUsername: isAnonymousMode ? `anon_${currentUserProfile.uid.substring(0,6)}` : currentUserProfile.username,
       senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`),
@@ -413,7 +410,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
     
-    // Only add these if NOT anonymous mode
     if (!isAnonymousMode) {
         newMessagePayload.senderIsShinyGold = currentUserProfile.isShinyGold || false;
         newMessagePayload.senderIsShinySilver = currentUserProfile.isShinySilver || false;
@@ -426,7 +422,6 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         }
     }
 
-
     try {
       await push(messagesDbRef, newMessagePayload);
     } catch (error) {
@@ -436,21 +431,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   };
 
   const typingUsersArray = useMemo(() => {
-    if (isAnonymousMode) return ["Someone is typing..."]; // Generic for anonymous
+    if (isAnonymousMode) { // For anonymous mode, check if anyone is typing.
+        return Object.values(typingUsers).some(u => u.isTyping && (Date.now() - u.timestamp < TYPING_TIMEOUT_MS)) ? ["Someone is typing..."] : [];
+    }
     return Object.values(typingUsers)
                  .filter(u => u.isTyping && (Date.now() - u.timestamp < TYPING_TIMEOUT_MS))
                  .map(u => u.displayName);
   }, [typingUsers, isAnonymousMode]);
 
   const typingDisplayMessage = useMemo(() => {
-    if (isAnonymousMode && typingUsersArray.length > 0 && Object.keys(typingUsers).length > 0) return "Someone is typing...";
-    if (isAnonymousMode) return null;
+    if (isAnonymousMode && typingUsersArray.length > 0) return "Someone is typing...";
+    if (isAnonymousMode) return null; // No display if no one is typing in anonymous mode
 
     if (typingUsersArray.length === 0) return null;
     if (typingUsersArray.length === 1) return `${typingUsersArray[0]} is typing...`;
     if (typingUsersArray.length === 2) return `${typingUsersArray[0]} and ${typingUsersArray[1]} are typing...`;
     return `${typingUsersArray.slice(0, 2).join(', ')}, and others are typing...`;
-  }, [typingUsersArray, isAnonymousMode, typingUsers]);
+  }, [typingUsersArray, isAnonymousMode]);
 
 
   const handleViewportScroll = useCallback(() => {
@@ -505,7 +502,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   }, []);
 
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
-    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return; // Disable reactions in anon mode
+    if (!currentUser || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return; 
 
     const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
@@ -573,7 +570,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardContent className="flex-1 overflow-hidden p-0 relative">
         <ScrollArea className="h-full" viewportRef={scrollAreaViewportRef} onScroll={handleViewportScroll}>
           <div className="p-2 md:p-4 space-y-0.5 md:space-y-1">
-            {isLoadingMessages ? (
+            {isLoadingMessages && (!messages || messages.length === 0) ? ( // Show loader only if messages are empty and loading
               <div className="flex justify-center items-center h-full p-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -603,7 +600,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                     isContinuation={isContinuation}
                     onToggleReaction={handleToggleReaction}
                     chatId={chatId}
-                    isAnonymousContext={isAnonymousMode} // Pass down anonymous mode
+                    isAnonymousContext={isAnonymousMode} 
                   />
                 );
               })
@@ -650,9 +647,10 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             onSendMessage={handleSendMessage}
             disabled={(chatType === 'ai' && isAiResponding) || !currentUser}
             chatId={chatId}
-            currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile} // Adjust profile for anon typing
+            currentUserProfile={isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile} 
         />
       </CardFooter>
     </Card>
   );
 }
+
