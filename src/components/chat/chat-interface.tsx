@@ -22,8 +22,8 @@ interface ChatInterfaceProps {
   chatType: 'global' | 'gc' | 'dm' | 'ai';
   chatId?: string;
   isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null; // Changed from FirebaseUser | null | undefined
-  authResolved: boolean; // Added prop
+  currentUser: FirebaseUser | null;
+  authResolved: boolean;
 }
 
 interface UserProfileData {
@@ -49,6 +49,47 @@ const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
 const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
 const MESSAGES_TO_LOAD = 50;
 
+// Utility function to fetch user profile data
+async function fetchUserProfileDataUtil(uid: string): Promise<UserProfileData | null> {
+  if (uid === 'ai-chatbot-uid') {
+    return {
+      uid, username: 'realtalk_ai', displayName: 'RealTalk AI',
+      avatar: `https://placehold.co/40x40.png?text=AI`, nameColor: '#8B5CF6',
+      isShinyGold: false, isShinySilver: false, isAdmin: false,
+    };
+  }
+  if (uid === 'system') {
+    return {
+      uid, username: 'system', displayName: 'System',
+      avatar: `https://placehold.co/40x40.png?text=SYS`, nameColor: '#71717a',
+      isShinyGold: false, isShinySilver: false, isAdmin: false,
+    };
+  }
+  try {
+    const userRef = ref(database, `users/${uid}`);
+    const snapshot = await get(userRef);
+    if (snapshot.exists()) {
+      const userData = snapshot.val();
+      return {
+        uid,
+        username: userData.username,
+        displayName: userData.displayName || userData.username,
+        avatar: userData.avatar,
+        nameColor: userData.nameColor,
+        title: userData.title,
+        isShinyGold: userData.isShinyGold || false,
+        isShinySilver: userData.isShinySilver || false,
+        isAdmin: userData.isAdmin || false,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error fetching user profile for ${uid}:`, error);
+    return null;
+  }
+}
+
+
 export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, authResolved }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
@@ -56,7 +97,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const [isAiResponding, setIsAiResponding] = useState(false);
   const scrollAreaViewportRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData}>({});
+  const [usersCache, setUsersCache] = useState<{[uid: string]: UserProfileData | null}>({}); // Allow null for not found
   const [typingUsers, setTypingUsers] = useState<{[uid: string]: TypingStatus}>({});
 
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
@@ -68,71 +109,37 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const typingStatusRef = useMemo(() => (authResolved && chatId) ? ref(database, `typing_status/${chatId}`) : null, [authResolved, chatId]);
   const currentUserTypingRef = useMemo(() => (authResolved && chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [authResolved, chatId, currentUser?.uid]);
 
-  const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<UserProfileData | null> => {
-    if (usersCache[uid]) return usersCache[uid];
-
-    if (uid === 'ai-chatbot-uid' || uid === 'system') {
-      const specialProfile: UserProfileData = {
-          uid,
-          username: uid === 'ai-chatbot-uid' ? 'realtalk_ai' : 'system',
-          displayName: uid === 'ai-chatbot-uid' ? 'RealTalk AI' : 'System',
-          avatar: `https://placehold.co/40x40.png?text=${uid === 'ai-chatbot-uid' ? 'AI' : 'SYS'}`,
-          nameColor: uid === 'ai-chatbot-uid' ? '#8B5CF6' : '#71717a',
-          isShinyGold: false, isShinySilver: false, isAdmin: false,
-      };
-      setUsersCache(prev => ({ ...prev, [uid]: specialProfile }));
-      return specialProfile;
-    }
-
-    try {
-      const userRef = ref(database, `users/${uid}`);
-      const snapshot = await get(userRef);
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const profile: UserProfileData = {
-          uid,
-          username: userData.username,
-          displayName: userData.displayName || userData.username,
-          avatar: userData.avatar,
-          nameColor: userData.nameColor,
-          title: userData.title,
-          isShinyGold: userData.isShinyGold || false,
-          isShinySilver: userData.isShinySilver || false,
-          isAdmin: userData.isAdmin || false,
-        };
-        setUsersCache(prev => ({ ...prev, [uid]: profile }));
-        return profile;
-      }
-      return null;
-    } catch (error) {
-      console.error(`Error fetching user profile for ${uid}:`, error);
-      return null;
-    }
-  }, [usersCache]);
 
   useEffect(() => {
     if (authResolved && currentUser) {
-      fetchAndCacheUserProfile(currentUser.uid).then(profile => {
-        if (profile) {
-          setCurrentUserProfile(profile);
-        } else {
-          const fallbackUsername = currentUser.email?.split('@')[0] || "user";
-          setCurrentUserProfile({
-            uid: currentUser.uid, username: fallbackUsername,
-            displayName: currentUser.displayName || fallbackUsername,
-            avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
-            isShinyGold: false, isShinySilver: false, isAdmin: false,
-          });
-        }
-      });
-    } else if (!currentUser) { // If user logs out or auth not resolved
+      if (!usersCache[currentUser.uid]) { // Fetch current user's profile if not in cache
+        fetchUserProfileDataUtil(currentUser.uid).then(profile => {
+          if (profile) {
+            setUsersCache(prev => ({ ...prev, [currentUser.uid!]: profile }));
+            setCurrentUserProfile(profile);
+          } else { // Fallback if profile fetch fails or doesn't exist (should be rare for current user)
+            const fallbackUsername = currentUser.email?.split('@')[0] || "user";
+            const fallbackProfile: UserProfileData = {
+              uid: currentUser.uid, username: fallbackUsername,
+              displayName: currentUser.displayName || fallbackUsername,
+              avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
+              isShinyGold: false, isShinySilver: false, isAdmin: false,
+            };
+            setUsersCache(prev => ({ ...prev, [currentUser.uid!]: fallbackProfile }));
+            setCurrentUserProfile(fallbackProfile);
+          }
+        });
+      } else { // Profile is in cache
+        setCurrentUserProfile(usersCache[currentUser.uid]);
+      }
+    } else if (!currentUser) { 
       setCurrentUserProfile(null);
     }
-  }, [authResolved, currentUser, fetchAndCacheUserProfile]);
+  }, [authResolved, currentUser, usersCache]);
 
 
   useEffect(() => {
-    if (!authResolved || !typingStatusRef || chatType === 'ai' || !currentUser?.uid) { // Added authResolved gate
+    if (!authResolved || !typingStatusRef || chatType === 'ai' || !currentUser?.uid) {
       setTypingUsers({});
       return;
     }
@@ -157,10 +164,17 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   useEffect(() => {
+    if (!authResolved) { // Primary gate based on ChatPage's auth resolution
+        setIsLoadingMessages(false);
+        setMessages([]);
+        return;
+    }
+
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
       if (chatId === 'ai-chatbot' && messages.length === 0) {
-        fetchAndCacheUserProfile('ai-chatbot-uid').then(aiProfile => {
+        fetchUserProfileDataUtil('ai-chatbot-uid').then(aiProfile => {
+            if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
             setMessages([
               {
                 id: 'ai-welcome', sender: aiProfile?.displayName || 'RealTalk AI',
@@ -176,7 +190,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       return;
     }
 
-    if (!authResolved || !currentUser || !chatId ) { // Stricter gate
+    if (!currentUser || !chatId ) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -206,44 +220,26 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         if (msgEntry.data.senderUid) uidsInSnapshot.add(msgEntry.data.senderUid);
       });
       
-      const newProfilesToFetch: {[uid: string]: UserProfileData} = {};
-      const profileFetchPromises: Promise<void>[] = [];
+      const newlyFetchedProfiles: Record<string, UserProfileData | null> = {};
+      let shouldUpdateCache = false;
 
-      Array.from(uidsInSnapshot).forEach(uid => {
-        if (!usersCache[uid] && uid !== 'system' && uid !== 'ai-chatbot-uid') {
-          profileFetchPromises.push(
-            get(ref(database, `users/${uid}`)).then(userSnapshot => {
-              if (userSnapshot.exists()) {
-                const userData = userSnapshot.val();
-                newProfilesToFetch[uid] = {
-                  uid, username: userData.username, displayName: userData.displayName || userData.username,
-                  avatar: userData.avatar, nameColor: userData.nameColor, title: userData.title,
-                  isShinyGold: userData.isShinyGold || false, isShinySilver: userData.isShinySilver || false, isAdmin: userData.isAdmin || false,
-                };
-              }
-            })
-          );
+      for (const uid of Array.from(uidsInSnapshot)) {
+        if (usersCache[uid] === undefined) { // Check if undefined (not fetched yet), null means fetched but not found
+          const profile = await fetchUserProfileDataUtil(uid);
+          newlyFetchedProfiles[uid] = profile; // Store even if null to mark as "attempted fetch"
+          if (profile) shouldUpdateCache = true; // Only trigger cache update if a profile was actually found
         }
-      });
-      
-      await Promise.all(profileFetchPromises);
-      if (Object.keys(newProfilesToFetch).length > 0) {
-        setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
       }
-      const currentCombinedCache = { ...usersCache, ...newProfilesToFetch };
+      
+      if (shouldUpdateCache || Object.values(newlyFetchedProfiles).some(p => p === null && usersCache[p as unknown as string] === undefined)) { // Also update cache if we marked some as null
+        setUsersCache(prevCache => ({ ...prevCache, ...newlyFetchedProfiles }));
+      }
+      const currentCombinedCache = { ...usersCache, ...newlyFetchedProfiles };
 
       const resolvedMessages = messageDataArray.map((msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
-        let profile: UserProfileData | null = null;
-
-        if (senderUid === 'system') {
-            profile = currentCombinedCache['system'] || { uid: 'system', username: 'system', displayName: 'System', avatar: `https://placehold.co/40x40.png?text=SYS`, nameColor: '#71717a', isShinyGold: false, isShinySilver: false, isAdmin: false };
-        } else if (senderUid === 'ai-chatbot-uid') {
-            profile = currentCombinedCache['ai-chatbot-uid'] || { uid: 'ai-chatbot-uid', username: 'realtalk_ai', displayName: 'RealTalk AI', avatar: `https://placehold.co/40x40.png?text=AI`, nameColor: '#8B5CF6', isShinyGold: false, isShinySilver: false, isAdmin: false };
-        } else if (!isAnonymousMode || senderUid === currentUser?.uid) {
-            profile = currentCombinedCache[senderUid] || null;
-        }
+        let profile: UserProfileData | null | undefined = currentCombinedCache[senderUid];
 
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
@@ -288,7 +284,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     });
 
     return () => off(messagesRefQuery, 'value', listener);
-  }, [authResolved, currentUser?.uid, chatType, chatId, toast, isAnonymousMode, usersCache, fetchAndCacheUserProfile]);
+  }, [authResolved, currentUser, chatType, chatId, toast, isAnonymousMode, usersCache]);
 
 
   useEffect(() => {
@@ -334,7 +330,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         try {
           const aiResponsePayload: AiChatInput = { message: content };
           const aiResult: AiChatOutput = await aiChat(aiResponsePayload);
-          const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
+          
+          let aiProfile = usersCache['ai-chatbot-uid'];
+          if (!aiProfile) {
+              aiProfile = await fetchUserProfileDataUtil('ai-chatbot-uid');
+              if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
+          }
+
           const aiResponseMessage: Message = {
             id: String(Date.now() + 1), sender: aiProfile?.displayName || 'RealTalk AI', senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
@@ -346,7 +348,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         } catch (error: any) {
           console.error("Error calling AI chat flow or processing its response:", error);
           const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
-          const aiProfile = await fetchAndCacheUserProfile('ai-chatbot-uid');
+          
+          let aiProfile = usersCache['ai-chatbot-uid'];
+          if (!aiProfile) {
+              aiProfile = await fetchUserProfileDataUtil('ai-chatbot-uid');
+              if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
+          }
+
           const errorMessage: Message = {
             id: String(Date.now() + 1), sender: aiProfile?.displayName || 'RealTalk AI', senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
@@ -448,7 +456,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                       const viewportRect = viewport.getBoundingClientRect();
                       if (rect.top >= viewportRect.top && rect.bottom <= viewportRect.bottom) {
                           messagesBeingMarkedAsRead.current.add(msg.id);
-                          const msgPath = msg.chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`; // Corrected path logic for GCs
+                          const msgPath = msg.chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`;
                           const messageRef = ref(database, msgPath);
                           update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
                               .then(() => messagesBeingMarkedAsRead.current.delete(msg.id))
@@ -462,7 +470,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           });
       }
     }
-  }, [messages, chatType, currentUser, chatId]); // Added chatId to dependencies
+  }, [messages, chatType, currentUser, chatId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = scrollAreaViewportRef.current;
@@ -556,9 +564,14 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             )}
             {chatType === 'ai' && isAiResponding && (
                 <div className="flex items-center space-x-2 p-2.5">
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">AI</div>
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                        <Avatar className="h-8 w-8">
+                            <AvatarImage src={usersCache['ai-chatbot-uid']?.avatar || `https://placehold.co/40x40.png?text=AI`} alt="RealTalk AI" />
+                            <AvatarFallback>AI</AvatarFallback>
+                        </Avatar>
+                    </div>
                     <div className="flex items-center space-x-1">
-                        <span className="text-xs font-semibold" style={{color: '#8B5CF6'}}>RealTalk AI</span>
+                        <span className="text-xs font-semibold" style={{color: usersCache['ai-chatbot-uid']?.nameColor || '#8B5CF6'}}>RealTalk AI</span>
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </div>
                 </div>
@@ -575,15 +588,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             </Button>
         )}
       </CardContent>
-      {authResolved && typingDisplayMessage && ( // Only show typing if auth is resolved
+      {authResolved && typingDisplayMessage && (
         <div className="px-4 pb-1 pt-0 text-xs text-muted-foreground h-5"> {typingDisplayMessage} </div>
       )}
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
             disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser)}
-            chatId={authResolved ? chatId : undefined} // Only pass chatId if auth is resolved
-            currentUserProfile={(authResolved && currentUser) ? (isAnonymousMode ? { uid: currentUserProfile?.uid || 'anon', displayName: "You" } : currentUserProfile) : null}
+            chatId={authResolved ? chatId : undefined}
+            currentUserProfile={(authResolved && currentUser && currentUserProfile) ? (isAnonymousMode ? { uid: currentUserProfile.uid, displayName: "You" } : currentUserProfile) : null}
         />
       </CardFooter>
     </Card>

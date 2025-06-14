@@ -21,10 +21,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2, MessageSquareText, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { database, auth } from '@/lib/firebase'; // auth is only needed for FirebaseUser type
-import { type User as FirebaseUser } from 'firebase/auth';
+import { database } from '@/lib/firebase'; // Removed auth, no longer directly used for FirebaseUser type here
+import { type User as FirebaseUser } from 'firebase/auth'; // Keep for prop type
 import { ref, get, serverTimestamp, set, push } from 'firebase/database';
-import type { TopNavBarUserProfileData } from './top-nav-bar'; // Import type from TopNavBar
+import type { TopNavBarUserProfileData } from './top-nav-bar';
 
 
 interface Friend {
@@ -37,11 +37,11 @@ interface Friend {
 
 interface CreateGCDialogProps {
   children?: React.ReactNode;
-  currentUser: FirebaseUser | null; // Received from TopNavBar
-  currentUserProfile: TopNavBarUserProfileData | null; // Received from TopNavBar
+  currentUser: FirebaseUser | null;
+  currentUserProfile: TopNavBarUserProfileData | null;
 }
 
-export function CreateGCDialog({ children, currentUser, currentUserProfile }: CreateGCDialogProps) {
+export function CreateGCDialog({ children, currentUser: propsCurrentUser, currentUserProfile: propsCurrentUserProfile }: CreateGCDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [gcName, setGCName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
@@ -54,11 +54,10 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
 
   const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
     setIsOpen(openValue);
-  }, [setIsOpen]); // setIsOpen is stable
+  }, [setIsOpen]);
 
-  // Effect to load data and reset state when dialog opens
   useEffect(() => {
-    if (isOpen && currentUser?.uid) {
+    if (isOpen && propsCurrentUser?.uid) {
       // Reset all relevant states for a fresh dialog instance FIRST
       setGCName('');
       setSelectedFriends([]);
@@ -68,12 +67,13 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
 
       const loadInitialDataForDialog = async () => {
         try {
-          const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
+          const friendsDbRef = ref(database, `friends/${propsCurrentUser.uid}`);
           const friendsSnapshot = await get(friendsDbRef);
           const friendsData = friendsSnapshot.val();
 
           if (!friendsData || Object.keys(friendsData).length === 0) {
             setFriendsToDisplay([]);
+            setIsLoadingFriends(false);
             return;
           }
 
@@ -110,7 +110,7 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
 
       loadInitialDataForDialog();
     }
-  }, [isOpen, currentUser?.uid, toast]);
+  }, [isOpen, propsCurrentUser?.uid, toast]);
 
 
   const handleSelectFriendInForm = useCallback((friendId: string) => {
@@ -120,16 +120,16 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
         ? prevSelected.filter((id) => id !== friendId)
         : [...prevSelected, friendId]
     );
-  }, [isCreatingGC]);
+  }, [isCreatingGC]); // Removed setSelectedFriends as it's stable
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!currentUser || !currentUserProfile) {
+    if (!propsCurrentUser || !propsCurrentUserProfile) {
       toast({ title: 'Error', description: 'You must be logged in to create a GC.', variant: 'destructive' });
       return;
     }
     
-    const creatorDisplayName = currentUserProfile.displayName || currentUser.displayName || "User";
+    const creatorDisplayName = propsCurrentUserProfile.displayName || propsCurrentUser.displayName || "User";
 
     if (!gcName.trim()) {
       toast({ title: 'Error', description: 'Group Chat name cannot be empty.', variant: 'destructive' });
@@ -144,12 +144,12 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
       const initialMessageContent = `${creatorDisplayName} created the Group Chat: "${gcName}"`;
 
       const members: { [key: string]: boolean } = {};
-      members[currentUser.uid] = true;
+      members[propsCurrentUser.uid] = true;
       selectedFriends.forEach(friendId => members[friendId] = true);
 
       await set(gcChatRef, {
         gcName: gcName,
-        createdBy: currentUser.uid,
+        createdBy: propsCurrentUser.uid,
         createdAt: serverTimestamp(),
         members: members,
       });
@@ -165,21 +165,23 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
       };
       await push(messagesRef, initialMessage);
       
-      // Placeholder for notifying friends
+      // Placeholder for notifying friends (e.g., writing to a 'user_notifications/{friendUid}' path)
       selectedFriends.forEach(friendUid => {
-        // Example: Writing a notification to a hypothetical 'user_notifications/{friendUid}' path
-        // const notificationRef = ref(database, `user_notifications/${friendUid}/${push(ref(database, `user_notifications/${friendUid}`)).key}`);
-        // set(notificationRef, {
-        //   type: 'gc_invite',
-        //   title: `Added to "${gcName}"`,
-        //   message: `${creatorDisplayName} added you to the group chat.`,
-        //   chatId: newGCId,
-        //   timestamp: serverTimestamp(),
-        //   read: false,
-        //   fromUid: currentUser.uid,
-        //   fromUsername: currentUserProfile.username || 'user'
-        // });
-        console.log(`Placeholder: Would send notification to ${friendUid} for GC ${newGCId} (${gcName})`);
+        const notificationKey = push(ref(database, `user_notifications/${friendUid}`)).key;
+        if (notificationKey) {
+            const notificationRef = ref(database, `user_notifications/${friendUid}/${notificationKey}`);
+            set(notificationRef, {
+              type: 'gc_invite',
+              title: `Added to "${gcName}"`,
+              message: `${creatorDisplayName} added you to the group chat.`,
+              chatId: newGCId,
+              timestamp: serverTimestamp(),
+              read: false,
+              fromUid: propsCurrentUser.uid,
+              fromUsername: propsCurrentUserProfile.username || 'user'
+            }).catch(err => console.error("Failed to send notification to friend:", friendUid, err));
+        }
+        console.log(`Notification sent (or would be sent) to ${friendUid} for GC ${newGCId} (${gcName})`);
       });
 
 
@@ -257,7 +259,7 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
                             checked={selectedFriends.includes(friend.id)}
                             aria-labelledby={`friend-label-dialog-unique-${friend.id}`}
                             disabled={isCreatingGC || isLoadingFriends}
-                            onCheckedChange={() => handleSelectFriendInForm(friend.id)} // Ensures checkbox click also calls the handler
+                            onCheckedChange={() => handleSelectFriendInForm(friend.id)}
                           />
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
@@ -271,7 +273,7 @@ export function CreateGCDialog({ children, currentUser, currentUserProfile }: Cr
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground p-4 text-center">
-                      {(currentUser && friendsToDisplay.length === 0 && !isLoadingFriends) ? "You have no friends to invite yet." : "No friends found or still loading."}
+                      {(propsCurrentUser && friendsToDisplay.length === 0 && !isLoadingFriends) ? "You have no friends to invite yet." : "No friends found or still loading."}
                     </p>
                   )}
                 </ScrollArea>

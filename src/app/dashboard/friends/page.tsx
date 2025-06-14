@@ -88,9 +88,6 @@ export default function FriendsPage() {
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
 
   const fetchAndCacheUserProfile = useCallback(async (uid: string): Promise<void> => {
-    // Check cache before fetching to avoid redundant calls if already initiated elsewhere
-    // However, this function is primarily for fetching if NOT in cache or explicitly refreshing.
-    // The `usersCache[uid] === undefined` check in calling effects is more robust for "fetch if not exists".
     try {
       const userRef = ref(database, `users/${uid}`);
       const snapshot = await get(userRef);
@@ -99,7 +96,7 @@ export default function FriendsPage() {
         const profile: UserProfileData = {
           uid,
           username: userData.username,
-          displayName: userData.username, 
+          displayName: userData.displayName || userData.username, 
           avatar: userData.avatar,
           nameColor: userData.nameColor,
           isShinyGold: userData.isShinyGold || false,
@@ -109,62 +106,57 @@ export default function FriendsPage() {
         };
         setUsersCache(prev => ({ ...prev, [uid]: profile }));
       } else {
-        setUsersCache(prev => ({ ...prev, [uid]: null })); // Mark as fetched but not found
+        setUsersCache(prev => ({ ...prev, [uid]: null }));
       }
     } catch (error) {
       console.error(`Error fetching user profile for ${uid}:`, error);
-      setUsersCache(prev => ({ ...prev, [uid]: null })); // Mark as fetch attempt failed
+      setUsersCache(prev => ({ ...prev, [uid]: null }));
     }
   }, []); // setUsersCache from useState is stable
 
-  // Effect to set up Firebase auth listener
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user); // Set the current user from Firebase
-      if (!user) { // If user logs out, clear all user-specific state
+      setCurrentUser(user);
+      if (!user) {
         setCurrentUserProfile(null);
         setRawFriendRequests({});
         setRawFriends({});
-        setUsersCache({}); // Clear cache on logout
+        setUsersCache({});
         setFriendRequests([]);
         setFriends([]);
-        setIsLoadingRequests(false); // Reset loading states
+        setIsLoadingRequests(false);
         setIsLoadingFriends(false);
       }
     });
-    return () => unsubscribeAuth(); // Cleanup on unmount
-  }, []); // Empty dependency array: run once on mount
+    return () => unsubscribeAuth();
+  }, []);
 
-  // Effect to fetch current user's profile when currentUser state changes or if not in cache
   useEffect(() => {
-    if (currentUser && usersCache[currentUser.uid] === undefined) {
+    if (currentUser?.uid && usersCache[currentUser.uid] === undefined) {
       fetchAndCacheUserProfile(currentUser.uid);
     }
-  }, [currentUser, usersCache, fetchAndCacheUserProfile]);
+  }, [currentUser?.uid, usersCache, fetchAndCacheUserProfile]); // Changed currentUser to currentUser?.uid
 
-  // Effect to derive currentUserProfile from usersCache once currentUser's profile is loaded
   useEffect(() => {
     if (currentUser && usersCache[currentUser.uid]) {
       setCurrentUserProfile(usersCache[currentUser.uid]);
     } else if (!currentUser) { 
-      setCurrentUserProfile(null); // Ensure profile is cleared if user logs out
+      setCurrentUserProfile(null);
     }
   }, [currentUser, usersCache]);
 
 
-  // Effect to listen for raw friend requests from Firebase
   useEffect(() => {
     if (!currentUser?.uid) {
-      setRawFriendRequests({}); // Clear if no user
+      setRawFriendRequests({});
       setIsLoadingRequests(false);
       return;
     }
     const requestsRef = ref(database, `friend_requests/${currentUser.uid}`);
-    setIsLoadingRequests(true); // Assume loading until data (or lack thereof) arrives
+    setIsLoadingRequests(true);
     const listener = onValue(requestsRef, (snapshot) => {
       const requestsData = snapshot.val() as Record<string, FriendRequestData> | null;
       setRawFriendRequests(requestsData || {});
-      // Loading state will be determined by the processing effect based on cache status
     }, (error) => {
       console.error("Error fetching friend requests:", error);
       toast({ title: "Error", description: "Could not load friend requests.", variant: "destructive" });
@@ -174,13 +166,11 @@ export default function FriendsPage() {
     return () => off(requestsRef, 'value', listener);
   }, [currentUser?.uid, toast]);
 
-  // Effect to process raw friend requests and fetch necessary profiles
   useEffect(() => {
     const requestUids = Object.keys(rawFriendRequests);
     const uidsToFetchFromRequests = requestUids.filter(uid => usersCache[uid] === undefined);
 
     if (uidsToFetchFromRequests.length > 0) {
-      // Don't set isLoadingRequests(true) here; it's managed by presence of profiles
       Promise.allSettled(uidsToFetchFromRequests.map(uid => fetchAndCacheUserProfile(uid)));
     }
 
@@ -193,11 +183,11 @@ export default function FriendsPage() {
             const requestData = rawFriendRequests[senderUid];
             const senderProfile = usersCache[senderUid];
 
-            if (senderProfile === undefined) { // Still loading this profile
+            if (senderProfile === undefined) {
                 allRequestProfilesLoaded = false;
                 continue; 
             }
-            if (senderProfile) { // Profile loaded (either successfully or as null)
+            if (senderProfile) {
                 processedRequests.push({
                     id: senderUid,
                     senderUsername: senderProfile.username || requestData.senderUsername || "Unknown User",
@@ -215,22 +205,21 @@ export default function FriendsPage() {
     setFriendRequests(processedRequests.sort((a, b) => b.timestamp - a.timestamp));
     
     if (requestUids.length === 0) {
-        setIsLoadingRequests(false); // No requests to load
+        setIsLoadingRequests(false);
     } else {
-        setIsLoadingRequests(!allRequestProfilesLoaded); // Loading if there are requests but not all profiles are resolved
+        setIsLoadingRequests(!allRequestProfilesLoaded);
     }
   }, [rawFriendRequests, usersCache, fetchAndCacheUserProfile]);
 
 
-  // Effect to listen for raw friends list from Firebase
   useEffect(() => {
     if (!currentUser?.uid) {
-      setRawFriends({}); // Clear if no user
+      setRawFriends({});
       setIsLoadingFriends(false);
       return;
     }
     const friendsDbRef = ref(database, `friends/${currentUser.uid}`);
-    setIsLoadingFriends(true); // Assume loading
+    setIsLoadingFriends(true);
     const listener = onValue(friendsDbRef, (snapshot) => {
       const friendsData = snapshot.val() as Record<string, FriendData> | null;
       setRawFriends(friendsData || {});
@@ -243,7 +232,6 @@ export default function FriendsPage() {
     return () => off(friendsDbRef, 'value', listener);
   }, [currentUser?.uid, toast]);
 
-  // Effect to process raw friends list and fetch necessary profiles
   useEffect(() => {
     const friendUids = Object.keys(rawFriends);
     const uidsToFetchFromFriends = friendUids.filter(uid => usersCache[uid] === undefined);
@@ -286,7 +274,6 @@ export default function FriendsPage() {
     }
   }, [rawFriends, usersCache, fetchAndCacheUserProfile]);
 
-  // Memoize friends list for presence effect dependency
   const memoizedFriendsForPresence = useMemo(() => friends.map(f => ({ id: f.id, isOnline: f.isOnline, lastChanged: f.lastChanged })), [friends]);
 
   useEffect(() => {
