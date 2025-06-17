@@ -14,7 +14,7 @@ interface ChatInputProps {
   onSendMessage: (message: string) => void;
   disabled?: boolean;
   chatId?: string;
-  loggedInUserProfile?: UserProfileData | null; 
+  loggedInUserProfile?: UserProfileData | null;
 }
 
 const emojis = ['😀', '😂', '😍', '🤔', '😢', '🥳', '👍', '🙏'];
@@ -31,17 +31,27 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
   const typingStatusRef = loggedInUserProfile?.uid && chatId ? ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`) : null;
 
   useEffect(() => {
-    const currentTypingRef = typingStatusRef;
+    // Explicitly guard: only proceed if we have a valid user profile UID and chat ID.
+    if (!loggedInUserProfile?.uid || !chatId) {
+      return;
+    }
+
+    const currentTypingRef = typingStatusRef; // Re-evaluate based on current props
+    
     if (currentTypingRef) {
       const onDisconnectRef = onDisconnect(currentTypingRef);
       onDisconnectRef.remove().catch(e => console.warn("Error on onDisconnect().remove() for typing status:", e));
 
       return () => {
         onDisconnectRef.cancel().catch(e => console.warn("Error on onDisconnect().cancel() for typing status:", e));
-        remove(currentTypingRef).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
+        // Only remove if it was this instance that set it up AND the user matches
+        // This check helps prevent trying to remove if the user context has changed rapidly.
+        if (auth.currentUser?.uid === loggedInUserProfile?.uid) {
+            remove(currentTypingRef).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
+        }
       };
     }
-  }, [typingStatusRef]);
+  }, [typingStatusRef, loggedInUserProfile?.uid, chatId]); // Added chatId to dependencies
 
 
   const updateTypingStatus = useCallback((isTyping: boolean) => {
@@ -53,7 +63,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
       set(typingStatusRef, {
         isTyping: true,
         timestamp: serverTimestamp(),
-        displayName: loggedInUserProfile.displayName // Use the actual display name
+        displayName: loggedInUserProfile.displayName
       }).catch(error => console.error("Error setting typing status (true):", error));
     } else {
       remove(typingStatusRef).catch(error => console.error("Error removing typing status (false):", error));
@@ -91,7 +101,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (typingStatusRef && loggedInUserProfile?.uid && loggedInUserProfile.displayName) {
+      if (typingStatusRef && loggedInUserProfile?.uid && loggedInUserProfile.displayName) { // Guard this call
         updateTypingStatus(false);
       }
 
@@ -162,7 +172,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
           >
             {isAnimatingSend ? (
               <SendHorizonal size={18} className="animate-send-effect" />
-            ) : disabled && !loggedInUserProfile?.uid ? ( // Check if explicitly disabled AND profile is missing
+            ) : disabled && !loggedInUserProfile?.uid && !loggedInUserProfile ? ( // Check if explicitly disabled AND profile is missing
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <SendHorizonal size={18} />
@@ -174,5 +184,3 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
     </div>
   );
 }
-
-    
