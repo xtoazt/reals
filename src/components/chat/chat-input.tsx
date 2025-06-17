@@ -28,34 +28,28 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
   const lastTypingUpdateRef = useRef<number>(0);
   const [isAnimatingSend, setIsAnimatingSend] = useState(false);
 
-  const typingStatusRef = loggedInUserProfile?.uid && chatId ? ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`) : null;
+  const typingStatusRef = loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && chatId ? ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`) : null;
 
   useEffect(() => {
-    // Explicitly guard: only proceed if we have a valid user profile UID and chat ID.
-    if (!loggedInUserProfile?.uid || !chatId) {
+    if (!loggedInUserProfile?.uid || typeof loggedInUserProfile.uid !== 'string' || !chatId) {
       return;
     }
 
-    const currentTypingRef = typingStatusRef; // Re-evaluate based on current props
-    
-    if (currentTypingRef) {
-      const onDisconnectRef = onDisconnect(currentTypingRef);
-      onDisconnectRef.remove().catch(e => console.warn("Error on onDisconnect().remove() for typing status:", e));
+    const currentTypingRef = ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`);
+    const onDisconnectRefHandle = onDisconnect(currentTypingRef);
+    onDisconnectRefHandle.remove().catch(e => console.warn("Error on onDisconnect().remove() for typing status:", e));
 
-      return () => {
-        onDisconnectRef.cancel().catch(e => console.warn("Error on onDisconnect().cancel() for typing status:", e));
-        // Only remove if it was this instance that set it up AND the user matches
-        // This check helps prevent trying to remove if the user context has changed rapidly.
-        if (auth.currentUser?.uid === loggedInUserProfile?.uid) {
-            remove(currentTypingRef).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
-        }
-      };
-    }
-  }, [typingStatusRef, loggedInUserProfile?.uid, chatId]); // Added chatId to dependencies
+    return () => {
+      onDisconnectRefHandle.cancel().catch(e => console.warn("Error on onDisconnect().cancel() for typing status:", e));
+      if (auth.currentUser?.uid === loggedInUserProfile?.uid) {
+          remove(currentTypingRef).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
+      }
+    };
+  }, [loggedInUserProfile?.uid, chatId]);
 
 
   const updateTypingStatus = useCallback((isTyping: boolean) => {
-    if (!typingStatusRef || !loggedInUserProfile?.uid || !loggedInUserProfile.displayName) {
+    if (!typingStatusRef || !loggedInUserProfile?.uid || typeof loggedInUserProfile.uid !== 'string' || !loggedInUserProfile.displayName) {
       return;
     }
 
@@ -75,7 +69,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
 
-    if (!typingStatusRef || !loggedInUserProfile?.uid || !loggedInUserProfile.displayName) {
+    if (!typingStatusRef || !loggedInUserProfile?.uid || typeof loggedInUserProfile.uid !== 'string' || !loggedInUserProfile.displayName) {
       return;
     }
 
@@ -93,7 +87,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
   };
 
   const handleSend = () => {
-    if (message.trim() && !disabled && loggedInUserProfile?.uid) {
+    if (message.trim() && !disabled && loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string') {
       if (isAnimatingSend) return;
 
       onSendMessage(message);
@@ -101,7 +95,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (typingStatusRef && loggedInUserProfile?.uid && loggedInUserProfile.displayName) { // Guard this call
+      if (typingStatusRef && loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && loggedInUserProfile.displayName) { 
         updateTypingStatus(false);
       }
 
@@ -130,7 +124,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
               handleSend();
             }
           }}
-          placeholder={isInputDisabled ? (disabled ? "AI is thinking..." : "Login to chat...") : "Type a message..."}
+          placeholder={isInputDisabled ? (disabled && chatType === 'ai' ? "AI is thinking..." : "Login to chat...") : "Type a message..."}
           className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm"
           rows={1}
           disabled={isInputDisabled}
@@ -172,7 +166,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
           >
             {isAnimatingSend ? (
               <SendHorizonal size={18} className="animate-send-effect" />
-            ) : disabled && !loggedInUserProfile?.uid && !loggedInUserProfile ? ( // Check if explicitly disabled AND profile is missing
+            ) : disabled && !isInputDisabled ? ( 
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <SendHorizonal size={18} />
