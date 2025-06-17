@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { SmilePlus, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck, Check, CheckCheck, VenetianMask } from 'lucide-react'; // Added VenetianMask
+import { SmilePlus, ThumbsUp, Heart, Link as LinkIcon, UserPlus, UserCircle as UserProfileIcon, UserX, ShieldCheck, Check, CheckCheck, VenetianMask } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -41,7 +41,7 @@ export interface Message {
   reactions?: Reactions;
   imageUrl?: string;
   link?: { url: string; title?: string; description?: string; image?: string };
-  chatType?: 'global' | 'gc' | 'dm' | 'ai';
+  chatType?: 'global' | 'team' | 'dm' | 'ai'; // Added 'team'
   readByRecipientTimestamp?: number;
 }
 
@@ -51,7 +51,7 @@ interface ChatMessageProps {
   isContinuation: boolean;
   onToggleReaction: (messageId: string, reactionType: keyof Reactions, chatType: Message['chatType'], chatId: string) => void;
   chatId: string;
-  isAnonymousContext?: boolean; // Added prop
+  isAnonymousContext?: boolean; 
 }
 
 const availableReactions: Array<{ type: keyof Reactions; icon: React.ElementType }> = [
@@ -65,14 +65,13 @@ export function ChatMessage({ message: propMessage, showAvatarAndSender, isConti
   const currentUser = auth.currentUser;
   const [isReactionPopoverOpen, setIsReactionPopoverOpen] = useState(false);
 
-  // Apply anonymous transformations
   const message = React.useMemo(() => {
     if (isAnonymousContext && !propMessage.isOwnMessage && propMessage.senderUid !== 'system' && propMessage.senderUid !== 'ai-chatbot-uid') {
       return {
         ...propMessage,
         sender: "Anonymous",
         senderUsername: "anonymous",
-        avatar: `https://placehold.co/40x40.png?text=??`, // Generic avatar
+        avatar: `https://placehold.co/40x40.png?text=??`, 
         senderNameColor: undefined,
         senderTitle: undefined,
         senderIsShinyGold: false,
@@ -287,7 +286,7 @@ export function ChatMessage({ message: propMessage, showAvatarAndSender, isConti
   const renderContent = () => {
     const parts = message.content.split(/(\s+)/);
     return parts.map((part, index) => {
-      if (part.startsWith('@') && part.length > 1 && !isAnonymousContext) { // Mention clickable only if not anonymous
+      if (part.startsWith('@') && part.length > 1 && !isAnonymousContext) { 
         const mentionedUsername = part.substring(1);
         return (
           <span key={index} className="text-accent font-semibold cursor-pointer hover:underline" onClick={() => router.push(`/dashboard/profile/${mentionedUsername}`)}>
@@ -318,9 +317,6 @@ export function ChatMessage({ message: propMessage, showAvatarAndSender, isConti
   };
 
   const fallbackAvatarText = message.sender ? message.sender.substring(0, 2).toUpperCase() : "U";
-  if (isAnonymousContext && !message.isOwnMessage && message.senderUid !== 'system' && message.senderUid !== 'ai-chatbot-uid') {
-     // fallbackAvatarText = "??"; // For anonymous user
-  }
 
 
   let senderNameClassName = message.isOwnMessage ? "text-primary" : "text-foreground/80";
@@ -329,7 +325,7 @@ export function ChatMessage({ message: propMessage, showAvatarAndSender, isConti
   }
   let senderNameStyle = {};
 
-  if (!isAnonymousContext || message.isOwnMessage) { // Apply special styles only if not anonymous or own message
+  if (!isAnonymousContext || message.isOwnMessage) { 
       if (message.senderIsShinyGold) {
         senderNameClassName = cn(senderNameClassName, 'text-shiny-gold');
       } else if (message.senderIsShinySilver) {
@@ -342,7 +338,7 @@ export function ChatMessage({ message: propMessage, showAvatarAndSender, isConti
 
   let senderTitleClassName = "text-xs font-medium italic flex items-center shrink-0";
   let senderTitleStyle = { color: 'hsl(var(--foreground))' };
-  if (!isAnonymousContext || message.isOwnMessage) { // Apply special styles for title
+  if (!isAnonymousContext || message.isOwnMessage) { 
        if (message.senderIsShinyGold) {
         senderTitleClassName = cn(senderTitleClassName, 'text-shiny-gold');
         senderTitleStyle = {};

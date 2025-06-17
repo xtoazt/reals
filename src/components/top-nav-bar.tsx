@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, PlusCircle, Bell, Menu, Sparkles, UserCheck, MessageSquareText, Info, UserPlus } from 'lucide-react';
+import { Home, MessageSquare, Users, UserCircle, Settings, LogOut, Bot, Bell, Menu, Sparkles, UserCheck, MessageSquareText, Info, UserPlus, Shield } from 'lucide-react'; // Added Shield for Team
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-// import { CreateGCDialog } from './create-gc-dialog'; // Removed CreateGCDialog import
+import { CreateTeamDialog } from './create-team-dialog'; // Changed to CreateTeamDialog
 import { ThemeToggle } from '@/components/theme-toggle';
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -75,6 +75,7 @@ export function TopNavBar() {
   const [userProfileData, setUserProfileData] = useState<TopNavBarUserProfileData | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
   
   const [rawFriendRequestsData, setRawFriendRequestsData] = useState<{ [senderUid: string]: RawFriendRequest } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -248,200 +249,221 @@ export function TopNavBar() {
 
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground transition-colors duration-200">
-      <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle Menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 pt-10 w-72 bg-nav-background text-nav-foreground">
-          <nav className="grid gap-2 text-lg font-medium p-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${getActiveTab() === item.href ? 'text-primary bg-muted' : 'text-muted-foreground'}`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </Link>
-            ))}
-            {/* Removed Create GC button from mobile menu */}
-          </nav>
-        </SheetContent>
-      </Sheet>
-
-      <Link href="/dashboard" className="flex items-center gap-2">
-        <svg
-          width="28" height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="text-primary"
-        >
-          <path d="M6 19L9 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M18 19L15 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M8 8L16 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M7 12L17 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
-      </Link>
-
-      <nav className="hidden md:flex flex-1 items-center justify-center">
-        <Tabs value={getActiveTab()} className="w-auto">
-          <TabsList>
-            {navItems.map((item) => (
-              <TabsTrigger key={item.label} value={item.href} asChild>
-                <Link href={item.href} className="flex items-center gap-1.5 px-3 py-1.5">
-                  <item.icon className="h-4 w-4" /> {item.label}
+    <>
+      <header className="fixed top-0 left-0 right-0 z-20 flex h-[57px] items-center gap-4 border-b bg-nav-background/80 px-4 backdrop-blur-sm text-nav-foreground transition-colors duration-200">
+        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="md:hidden">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle Menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 pt-10 w-72 bg-nav-background text-nav-foreground">
+            <nav className="grid gap-2 text-lg font-medium p-4">
+              {navItems.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${getActiveTab() === item.href ? 'text-primary bg-muted' : 'text-muted-foreground'}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
                 </Link>
-              </TabsTrigger>
-            ))}
-             {/* Removed Create GC button from desktop tabs */}
-          </TabsList>
-        </Tabs>
-      </nav>
+              ))}
+              <Button
+                variant="outline"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 justify-start text-muted-foreground hover:text-primary"
+                onClick={() => {
+                  setIsCreateTeamDialogOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+              >
+                <Shield className="h-5 w-5" /> Create Team
+              </Button>
+            </nav>
+          </SheetContent>
+        </Sheet>
 
-      <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle />
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Info className="h-[1.2rem] w-[1.2rem]" />
-              <span className="sr-only">About RealTalk</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80" align="end">
-            <div className="grid gap-4">
-              <div className="space-y-2">
-                <h4 className="font-medium leading-none">About RealTalk</h4>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                  I just made this so that people wouldn&apos;t have to use a Google Doc to talk or risk silent lunch lol.
-                  {"\\n\\n"}
-                  My username is <strong>rohan_</strong>, anyone else is a fake.
-                  {"\\n\\n"}
-                  please contact me about any errors or requests you have
-                  {"\\n\\n"}
-                  also don&apos;t worry about this getting blocked, making new links is actually so easy
-                  {"\\n\\n"}
-                  (so can you share this now)
-                </p>
+        <Link href="/dashboard" className="flex items-center gap-2">
+          {/* New Team/Group Icon SVG */}
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
+            <circle cx="12" cy="8" r="3" stroke="currentColor" strokeWidth="1.5"/>
+            <circle cx="8" cy="15" r="3" stroke="currentColor" strokeWidth="1.5"/>
+            <circle cx="16" cy="15" r="3" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M12 11V12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M10.5 14.5L9 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M13.5 14.5L15 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
+        </Link>
+
+        <nav className="hidden md:flex flex-1 items-center justify-center">
+          <Tabs value={getActiveTab()} className="w-auto">
+            <TabsList>
+              {navItems.map((item) => (
+                <TabsTrigger key={item.label} value={item.href} asChild>
+                  <Link href={item.href} className="flex items-center gap-1.5 px-3 py-1.5">
+                    <item.icon className="h-4 w-4" /> {item.label}
+                  </Link>
+                </TabsTrigger>
+              ))}
+              <Button
+                variant="ghost"
+                className="ml-2 flex items-center gap-1.5 px-3 py-1.5 h-auto text-sm text-muted-foreground hover:text-primary hover:bg-muted"
+                onClick={() => setIsCreateTeamDialogOpen(true)}
+              >
+                <Shield className="h-4 w-4" /> Create Team
+              </Button>
+            </TabsList>
+          </Tabs>
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Info className="h-[1.2rem] w-[1.2rem]" />
+                <span className="sr-only">About RealTalk</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="end">
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">About RealTalk</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                    I just made this so that people wouldn&apos;t have to use a Google Doc to talk or risk silent lunch lol.
+                    {"\\n\\n"}
+                    My username is <strong>rohan_</strong>, anyone else is a fake.
+                    {"\\n\\n"}
+                    please contact me about any errors or requests you have
+                    {"\\n\\n"}
+                    also don&apos;t worry about this getting blocked, making new links is actually so easy
+                    {"\\n\\n"}
+                    (so can you share this now)
+                  </p>
+                </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
 
-        <DropdownMenu onOpenChange={(open) => {
-            if (open && unreadNotificationsCount > 0) {
-                 const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
-                 if (unreadIds.length > 0) {
-                    setReadNotificationIds(prev => new Set([...prev, ...unreadIds]));
-                 }
-            }
-        }}>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full relative">
-              <Bell className="h-5 w-5" />
-              {unreadNotificationsCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs animate-pulse">
-                  {unreadNotificationsCount}
-                </span>
-              )}
-              <span className="sr-only">Notifications</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 md:w-96">
-            <DropdownMenuLabel className="flex justify-between items-center">
-              <span>Notifications</span>
-              {notifications.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); clearAllNotifications();}} className="text-xs h-auto py-0.5 px-1.5">Clear All</Button>
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <ScrollArea className="max-h-[300px] md:max-h-[400px]">
-              {notifications.length === 0 ? (
-                <DropdownMenuItem disabled className="text-center text-muted-foreground py-4">No new notifications</DropdownMenuItem>
-              ) : (
-                notifications.map(notif => {
-                  const IconComponent = notif.icon || Sparkles;
-                  return (
-                    <DropdownMenuItem
-                      key={notif.id}
-                      className={cn(
-                        "flex items-start gap-2.5 p-2.5 cursor-pointer transition-colors hover:bg-muted",
-                        notif.read ? 'opacity-60' : 'font-medium'
-                      )}
-                      onClick={() => {
-                        markNotificationAsRead(notif.id);
-                        if (notif.link) router.push(notif.link);
-                      }}
-                    >
-                      <IconComponent className={`h-4 w-4 mt-0.5 flex-shrink-0 ${notif.read ? 'text-muted-foreground' : 'text-primary'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${notif.read ? '' : 'text-foreground'}`}>{notif.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">{notif.description}</p>
-                        <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDistanceToNow(notif.timestamp, { addSuffix: true })}</p>
-                      </div>
-                       {!notif.read && <div className="h-2 w-2 rounded-full bg-primary self-center mr-1"></div>}
-                    </DropdownMenuItem>
-                  )
-                })
-              )}
-            </ScrollArea>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <DropdownMenu onOpenChange={(open) => {
+              if (open && unreadNotificationsCount > 0) {
+                   const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+                   if (unreadIds.length > 0) {
+                      setReadNotificationIds(prev => new Set([...prev, ...unreadIds]));
+                   }
+              }
+          }}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full relative">
+                <Bell className="h-5 w-5" />
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs animate-pulse">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+                <span className="sr-only">Notifications</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 md:w-96">
+              <DropdownMenuLabel className="flex justify-between items-center">
+                <span>Notifications</span>
+                {notifications.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); clearAllNotifications();}} className="text-xs h-auto py-0.5 px-1.5">Clear All</Button>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <ScrollArea className="max-h-[300px] md:max-h-[400px]">
+                {notifications.length === 0 ? (
+                  <DropdownMenuItem disabled className="text-center text-muted-foreground py-4">No new notifications</DropdownMenuItem>
+                ) : (
+                  notifications.map(notif => {
+                    const IconComponent = notif.icon || Sparkles;
+                    return (
+                      <DropdownMenuItem
+                        key={notif.id}
+                        className={cn(
+                          "flex items-start gap-2.5 p-2.5 cursor-pointer transition-colors hover:bg-muted",
+                          notif.read ? 'opacity-60' : 'font-medium'
+                        )}
+                        onClick={() => {
+                          markNotificationAsRead(notif.id);
+                          if (notif.link) router.push(notif.link);
+                        }}
+                      >
+                        <IconComponent className={`h-4 w-4 mt-0.5 flex-shrink-0 ${notif.read ? 'text-muted-foreground' : 'text-primary'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${notif.read ? '' : 'text-foreground'}`}>{notif.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">{notif.description}</p>
+                          <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDistanceToNow(notif.timestamp, { addSuffix: true })}</p>
+                        </div>
+                         {!notif.read && <div className="h-2 w-2 rounded-full bg-primary self-center mr-1"></div>}
+                      </DropdownMenuItem>
+                    )
+                  })
+                )}
+              </ScrollArea>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={userProfileData?.avatar} alt={userProfileData?.displayName || "User"} data-ai-hint="user avatar" />
-                <AvatarFallback>{getAvatarFallback(userProfileData?.displayName)}</AvatarFallback>
-              </Avatar>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            {currentUser && userProfileData && (
-              <>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className={cn("text-sm font-medium leading-none", userDisplayNameClasses)} style={userDisplayNameStyle}>
-                      {userProfileData.displayName}
-                       {userProfileData.isAdmin && <span className="ml-1 text-xs text-destructive">(Admin)</span>}
-                    </p>
-                    {userProfileData.title && (
-                      <p className={cn(userTitleClasses)} style={userTitleStyle}>
-                        {userProfileData.title}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={userProfileData?.avatar} alt={userProfileData?.displayName || "User"} data-ai-hint="user avatar" />
+                  <AvatarFallback>{getAvatarFallback(userProfileData?.displayName)}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {currentUser && userProfileData && (
+                <>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className={cn("text-sm font-medium leading-none", userDisplayNameClasses)} style={userDisplayNameStyle}>
+                        {userProfileData.displayName}
+                         {userProfileData.isAdmin && <span className="ml-1 text-xs text-destructive">(Admin)</span>}
                       </p>
-                    )}
-                    <p className="text-xs leading-none text-muted-foreground">
-                      @{userProfileData.username}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard/profile" className="w-full justify-start cursor-pointer">
-                <UserCircle className="mr-2 h-4 w-4" /> Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard/settings" className="w-full justify-start cursor-pointer">
-                <Settings className="mr-2 h-4 w-4" /> Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
-              <LogOut className="mr-2 h-4 w-4" /> Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </header>
+                      {userProfileData.title && (
+                        <p className={cn(userTitleClasses)} style={userTitleStyle}>
+                          {userProfileData.title}
+                        </p>
+                      )}
+                      <p className="text-xs leading-none text-muted-foreground">
+                        @{userProfileData.username}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/profile" className="w-full justify-start cursor-pointer">
+                  <UserCircle className="mr-2 h-4 w-4" /> Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings" className="w-full justify-start cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" /> Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                <LogOut className="mr-2 h-4 w-4" /> Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+      {currentUser && (
+        <CreateTeamDialog
+          isOpen={isCreateTeamDialogOpen}
+          onOpenChange={setIsCreateTeamDialogOpen}
+          propsCurrentUser={currentUser}
+        />
+      )}
+    </>
   );
 }

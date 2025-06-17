@@ -7,7 +7,7 @@ import { ChatInput } from './chat-input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown, ThumbsUp, Heart } from 'lucide-react';
+import { MoreVertical, UserPlus, LogOut as LeaveIcon, UserX, Info, Loader2, Users, ArrowDown, ThumbsUp, Heart, Shield } from 'lucide-react'; // Added Shield
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { database, auth } from '@/lib/firebase';
 import { type User as FirebaseUser } from 'firebase/auth';
@@ -30,7 +30,7 @@ export interface UserProfileData {
 
 interface ChatInterfaceProps {
   chatTitle: string;
-  chatType: 'global' | 'gc' | 'dm' | 'ai';
+  chatType: 'global' | 'team' | 'dm' | 'ai'; // Added 'team'
   chatId?: string;
   isAnonymousMode?: boolean;
   currentUser: FirebaseUser | null; 
@@ -107,8 +107,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const currentUserTypingRef = useMemo(() => (authResolved && chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [authResolved, chatId, currentUser?.uid]);
   
   useEffect(() => {
-    // Prime usersCache with loggedInUserProfile if available
-    if (loggedInUserProfile?.uid) { // Ensure UID exists
+    if (loggedInUserProfile?.uid) {
       setUsersCache(prev => ({ ...prev, [loggedInUserProfile.uid]: loggedInUserProfile }));
     }
   }, [loggedInUserProfile]);
@@ -166,7 +165,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       return;
     }
     
-    if (!currentUser?.uid || !chatId || (chatType !== 'ai' && !loggedInUserProfile?.uid) ) { // Check loggedInUserProfile.uid
+    if (!currentUser?.uid || !chatId || (chatType !== 'ai' && !loggedInUserProfile?.uid) ) { 
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -174,7 +173,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
     setIsLoadingMessages(true);
     let messagesPath: string;
-    if (chatType === 'gc') {
+    if (chatType === 'team') { // Changed from 'gc'
       messagesPath = `chats/${chatId}/messages`;
     } else {
       messagesPath = `chats/${chatId}`;
@@ -216,9 +215,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         currentCombinedCache = { ...currentCombinedCache, ...newProfilesToFetch };
         setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
       }
-      if (loggedInUserProfile?.uid && currentCombinedCache[loggedInUserProfile.uid] !== loggedInUserProfile) { // Check loggedInUserProfile.uid
+      if (loggedInUserProfile?.uid && currentCombinedCache[loggedInUserProfile.uid] !== loggedInUserProfile) { 
          currentCombinedCache[loggedInUserProfile.uid] = loggedInUserProfile;
-         setUsersCache(prevCache => ({ ...prevCache, [loggedInUserProfile.uid!]: loggedInUserProfile })); // uid is checked
+         setUsersCache(prevCache => ({ ...prevCache, [loggedInUserProfile.uid!]: loggedInUserProfile })); 
       }
 
 
@@ -366,7 +365,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     }
 
     let messagesDbRefPath: string;
-    if (chatType === 'gc') {
+    if (chatType === 'team') { // Changed from 'gc'
       messagesDbRefPath = `chats/${chatId}/messages`;
     } else {
       messagesDbRefPath = `chats/${chatId}`;
@@ -374,7 +373,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     const messagesDbRef = ref(database, messagesDbRefPath);
 
     const baseMessagePayload = {
-      senderUid: loggedInUserProfile.uid, // UID is confirmed string by the guard above
+      senderUid: loggedInUserProfile.uid, 
       senderName: isAnonymousMode ? "Anonymous" : loggedInUserProfile.displayName,
       senderUsername: isAnonymousMode ? `anon_${loggedInUserProfile.uid.substring(0,6)}` : loggedInUserProfile.username,
       senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (loggedInUserProfile.avatar || `https://placehold.co/40x40.png?text=${loggedInUserProfile.displayName.charAt(0)}`),
@@ -437,7 +436,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
         }
       }
-      if (chatType === 'dm' && currentUser?.uid && !atBottom) { // Ensure currentUser is available
+      if (chatType === 'dm' && currentUser?.uid && !atBottom) { 
           messages.forEach(msg => {
               if (msg.senderUid !== currentUser.uid && !msg.readByRecipientTimestamp && !messagesBeingMarkedAsRead.current.has(msg.id)) {
                   const messageElement = document.getElementById(`message-${msg.id}`);
@@ -446,7 +445,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                       const viewportRect = viewport.getBoundingClientRect();
                       if (rect.top >= viewportRect.top && rect.bottom <= viewportRect.bottom) {
                           messagesBeingMarkedAsRead.current.add(msg.id);
-                          const msgPath = msg.chatType === 'gc' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`;
+                          const msgPath = msg.chatType === 'team' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`; // Changed 'gc' to 'team'
                           const messageRef = ref(database, msgPath);
                           update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
                               .then(() => messagesBeingMarkedAsRead.current.delete(msg.id))
@@ -472,9 +471,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   }, []);
 
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
-    if (!authResolved || !currentUser?.uid || !loggedInUserProfile?.uid || !msgChatType || !currentChatId || isAnonymousMode) return; // Ensure loggedInUserProfile.uid
+    if (!authResolved || !currentUser?.uid || !loggedInUserProfile?.uid || !msgChatType || !currentChatId || isAnonymousMode) return; 
 
-    const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
+    const messagePathPrefix = msgChatType === 'team' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`; // Changed 'gc' to 'team'
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
 
     try {
@@ -509,11 +508,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             <Button variant="ghost" size="icon"> <MoreVertical size={20} /> </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {chatType === 'gc' && (
-              <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to GC clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite Friends</DropdownMenuItem>
-               <DropdownMenuItem onClick={() => toast({title: "Feature", description:"GC info clicked (UI only)"})}><Info size={16} className="mr-2" /> GC Info</DropdownMenuItem>
+            {chatType === 'team' && ( // Changed from 'gc'
+              <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to Team clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite to Team</DropdownMenuItem>
+               <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Team info clicked (UI only)"})}><Info size={16} className="mr-2" /> Team Info</DropdownMenuItem>
                <DropdownMenuSeparator />
-               <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave GC clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave GC</DropdownMenuItem></>
+               <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => toast({title: "Feature", description:"Leave Team clicked (UI only)"})}><LeaveIcon size={16} className="mr-2" /> Leave Team</DropdownMenuItem></>
             )}
              {chatType === 'dm' && (
               <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"View user's profile (UI only)"})}><Info size={16} className="mr-2" /> View Profile</DropdownMenuItem>
@@ -584,9 +583,9 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && (!currentUser?.uid || !loggedInUserProfile?.uid))} // Check loggedInUserProfile.uid
+            disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && (!currentUser?.uid || !loggedInUserProfile?.uid))} 
             chatId={authResolved ? chatId : undefined}
-            loggedInUserProfile={(authResolved && currentUser?.uid && loggedInUserProfile?.uid) ? (isAnonymousMode ? { ...loggedInUserProfile, displayName: "You (Anonymous)" } : loggedInUserProfile) : null} // Check loggedInUserProfile.uid
+            loggedInUserProfile={(authResolved && currentUser?.uid && loggedInUserProfile?.uid) ? (isAnonymousMode ? { ...loggedInUserProfile, displayName: "You (Anonymous)" } : loggedInUserProfile) : null} 
         />
       </CardFooter>
     </Card>

@@ -19,8 +19,8 @@ interface ChatPageProps {
   params: Promise<ResolvedParams>;
 }
 
-interface GCChatData {
-    gcName: string;
+interface TeamChatData { // Renamed from GCChatData
+    teamName: string; // Renamed from gcName
     members?: { [uid: string]: boolean };
 }
 
@@ -61,7 +61,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const [authResolved, setAuthResolved] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
-  const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
+  const [chatType, setChatType] = useState<'global' | 'team' | 'dm' | 'ai'>('global'); // Added 'team'
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
   const [resolvedChatId, setResolvedChatId] = useState(unwrappedChatId);
   const [canAccessChat, setCanAccessChat] = useState(false);
@@ -95,21 +95,19 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       setIsLoading(true); 
 
       // Determine initial chat type first
-      let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
+      let determinedInitialType: 'global' | 'team' | 'dm' | 'ai' = 'global'; // Added 'team'
       if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
         determinedInitialType = 'global';
       } else if (resolvedChatId === 'ai-chatbot') {
         determinedInitialType = 'ai';
       } else if (resolvedChatId?.startsWith('dm_')) {
         determinedInitialType = 'dm';
-      } else if (resolvedChatId?.startsWith('gc-')) {
-        determinedInitialType = 'gc';
+      } else if (resolvedChatId?.startsWith('team-')) { // Changed prefix from 'gc-' to 'team-'
+        determinedInitialType = 'team';
       }
 
       // Now use determinedInitialType
       if (currentUser && determinedInitialType !== 'ai' && !pageLevelCurrentUserProfile) {
-        // Still loading profile for authenticated, non-AI chat. Keep isLoading true.
-        // No need to set it again, performChatSetup starts with setIsLoading(true)
         return; 
       }
       
@@ -168,27 +166,27 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
             titleToSet = "Invalid DM Chat";
             finalCanAccess = false;
           }
-        } else if (determinedInitialType === 'gc') {
-          typeToSet = 'gc';
+        } else if (determinedInitialType === 'team') { // Changed from 'gc'
+          typeToSet = 'team';
           try {
-            const gcRef = ref(database, `chats/${resolvedChatId}`);
-            const gcSnapshot = await get(gcRef);
-            if (gcSnapshot.exists()) {
-              const gcData = gcSnapshot.val() as GCChatData;
-              titleToSet = gcData.gcName || `Group Chat: ${resolvedChatId.substring(3, 15)}...`;
-              if (gcData.members && gcData.members[currentUser.uid]) {
+            const teamChatRef = ref(database, `chats/${resolvedChatId}`); // Changed gcRef to teamChatRef
+            const teamChatSnapshot = await get(teamChatRef); // Changed gcSnapshot to teamChatSnapshot
+            if (teamChatSnapshot.exists()) {
+              const teamData = teamChatSnapshot.val() as TeamChatData; // Changed GCChatData to TeamChatData
+              titleToSet = teamData.teamName || `Team Chat: ${resolvedChatId.substring(5, 17)}...`; // Changed gcName to teamName
+              if (teamData.members && teamData.members[currentUser.uid]) {
                 finalCanAccess = true;
               } else {
-                titleToSet = "Access Denied to Group Chat";
+                titleToSet = "Access Denied to Team Chat";
                 finalCanAccess = false;
               }
             } else {
-              titleToSet = "Group Chat Not Found";
+              titleToSet = "Team Chat Not Found";
               finalCanAccess = false;
             }
           } catch (error) {
-            console.error("Error fetching GC details:", error);
-            titleToSet = "Error Loading Group Chat";
+            console.error("Error fetching Team Chat details:", error); // Changed GC to Team Chat
+            titleToSet = "Error Loading Team Chat";
             finalCanAccess = false;
           }
         } else {
@@ -265,5 +263,3 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     </div>
   );
 }
-
-    
