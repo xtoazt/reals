@@ -47,11 +47,11 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const { toast } = useToast();
   const router = useRouter();
-  
+
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
-  const isOpenRef = useRef(isOpen); 
+  const isOpenRef = useRef(isOpen);
 
   useEffect(() => {
     isOpenRef.current = isOpen;
@@ -59,18 +59,23 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
 
   const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
     setIsOpen(openValue);
-  }, []); 
+  }, []);
 
   useEffect(() => {
+    isOpenRef.current = isOpen; // Keep ref updated
+
     if (isOpen) {
+      // Reset form-specific states first
       setGCName('');
       setSelectedFriends([]);
-      setIsCreatingGC(false); 
-      setFriendsToDisplay([]);
-      setIsLoadingFriends(true);
+      setIsCreatingGC(false);
 
       if (propsCurrentUser?.uid) {
-        const loadFriends = async () => {
+        // Clear previous list and then set loading for fetching new friends
+        setFriendsToDisplay([]);
+        setIsLoadingFriends(true);
+
+        const loadFriendsInternal = async () => {
           try {
             const friendsDbRef = ref(database, `friends/${propsCurrentUser.uid}`);
             const friendsSnapshot = await get(friendsDbRef);
@@ -96,8 +101,8 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
               });
               fetchedFriendsList = (await Promise.all(fetchedFriendsPromises)).filter(f => f !== null) as Friend[];
             }
-            
-            if (isOpenRef.current) { 
+
+            if (isOpenRef.current) {
               setFriendsToDisplay(fetchedFriendsList);
             }
 
@@ -108,27 +113,28 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
               setFriendsToDisplay([]); // Ensure it's reset on error too
             }
           } finally {
-            if (isOpenRef.current) { 
+            if (isOpenRef.current) {
               setIsLoadingFriends(false);
             }
           }
         };
-        loadFriends();
+        loadFriendsInternal();
       } else {
-         if (isOpenRef.current) {
-            setFriendsToDisplay([]);
-            setIsLoadingFriends(false);
-        }
+        // No current user, so clear friends and ensure loading is false
+        setFriendsToDisplay([]);
+        setIsLoadingFriends(false);
       }
     } else {
+      // When dialog is closed, ensure loading is false if it was in a loading state.
       if (isLoadingFriends) {
-         setIsLoadingFriends(false);
+        setIsLoadingFriends(false);
       }
     }
-  }, [isOpen, propsCurrentUser?.uid]); // `toast` removed from dependencies
+  }, [isOpen, propsCurrentUser?.uid, toast]); // Added toast to dependency array if it's used inside the effect (though it's only in error path)
+
 
   const handleSelectFriendInForm = useCallback((friendId: string) => {
-    if (isCreatingGC) return; 
+    if (isCreatingGC) return;
     setSelectedFriends((prevSelected) =>
       prevSelected.includes(friendId)
         ? prevSelected.filter((id) => id !== friendId)
@@ -142,7 +148,7 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
       toast({ title: 'Error', description: 'You must be logged in to create a GC.', variant: 'destructive' });
       return;
     }
-    
+
     const creatorDisplayName = propsCurrentUserProfile.displayName || propsCurrentUser.displayName || "User";
 
     if (!gcName.trim()) {
@@ -178,22 +184,22 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
         timestamp: serverTimestamp(),
       };
       await push(messagesRef, initialMessage);
-      
+
       toast({
         title: 'Group Chat Created!',
         description: `"${gcName}" is ready.`,
       });
 
-      handleDialogOnOpenChange(false); 
+      handleDialogOnOpenChange(false);
       router.push(`/dashboard/chat/${newGCId}`);
     } catch (error) {
       console.error("Error creating GC:", error);
       toast({ title: 'Error', description: 'Could not create Group Chat.', variant: 'destructive' });
     } finally {
-        setIsCreatingGC(false); 
+        setIsCreatingGC(false);
     }
   };
-  
+
   const getAvatarFallbackText = (displayName?: string) => {
     return displayName ? displayName.charAt(0).toUpperCase() : 'U';
   }
@@ -209,7 +215,7 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
           </Button>
         </DialogTrigger>
       )}
-      {isOpen && ( 
+      {isOpen && (
         <DialogContent className="sm:max-w-[480px]">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
@@ -220,9 +226,9 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
             </DialogHeader>
             <div className="grid gap-6 py-6">
               <div className="space-y-2">
-                <Label htmlFor="gcName-dialog-unique-input-final">GC Name</Label> 
+                <Label htmlFor="gcName-dialog-unique-input-final">GC Name</Label>
                 <Input
-                  id="gcName-dialog-unique-input-final" 
+                  id="gcName-dialog-unique-input-final"
                   value={gcName}
                   onChange={(e) => setGCName(e.target.value)}
                   placeholder="E.g., Weekend Hangout"
@@ -249,11 +255,11 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
                           onKeyDown={(e) => { if (!isCreatingGC && (e.key === ' ' || e.key === 'Enter')) handleSelectFriendInForm(friend.id); }}
                         >
                           <Checkbox
-                            id={`friend-dialog-final-checkbox-${friend.id}`} 
+                            id={`friend-dialog-final-checkbox-${friend.id}`}
                             checked={selectedFriends.includes(friend.id)}
-                            aria-labelledby={`friend-label-dialog-final-${friend.id}`} 
+                            aria-labelledby={`friend-label-dialog-final-${friend.id}`}
                             disabled={isCreatingGC || isLoadingFriends}
-                            onCheckedChange={() => handleSelectFriendInForm(friend.id)} 
+                            onCheckedChange={() => handleSelectFriendInForm(friend.id)}
                           />
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={friend.avatar || `https://placehold.co/40x40.png?text=${getAvatarFallbackText(friend.displayName)}`} alt={friend.displayName} data-ai-hint="profile avatar" />
@@ -288,5 +294,4 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
     </Dialog>
   );
 }
-
     
