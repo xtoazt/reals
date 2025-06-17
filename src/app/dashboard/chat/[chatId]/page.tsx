@@ -72,11 +72,11 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       } else if (resolvedChatId?.startsWith('gc-')) {
         determinedInitialType = 'gc';
       }
-      
+
       let titleToSet = '';
       let typeToSet = determinedInitialType;
       let anonymousModeToSet = false;
-      let finalCanAccess = false; 
+      let finalCanAccess = false;
 
       // Case 1: Auth resolved, but no user logged in (currentUser is null)
       if (currentUser === null) {
@@ -90,11 +90,11 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
             typeToSet = determinedInitialType; // Keep original type for message
             finalCanAccess = false;
         }
-      } 
+      }
       // Case 2: Auth resolved, and user is logged in (currentUser is a FirebaseUser object)
-      else if (currentUser) { 
+      else if (currentUser) {
         if (determinedInitialType === 'global') {
-          titleToSet = 
+          titleToSet =
             resolvedChatId === 'global' ? 'Global Chat' :
             resolvedChatId === 'global-unblocked' ? 'Unblocked Chat' :
             resolvedChatId === 'global-school' ? 'School Chat' :
@@ -104,8 +104,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
           anonymousModeToSet = resolvedChatId === 'global-anonymous';
           finalCanAccess = true;
         } else if (determinedInitialType === 'ai') {
-          titleToSet = 'AI Chatbot'; 
-          typeToSet = 'ai'; 
+          titleToSet = 'AI Chatbot';
+          typeToSet = 'ai';
           finalCanAccess = true; // AI chat accessible when logged in
         } else if (determinedInitialType === 'dm') {
           typeToSet = 'dm';
@@ -162,7 +162,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       }
       // Case 3: Auth resolved, but currentUser is still undefined (should be rare if onAuthStateChanged is working)
       // This will fall through, and finalCanAccess will remain false unless it's an AI chat.
-      
+
       setChatTitle(titleToSet);
       setChatType(typeToSet);
       setIsAnonymousMode(anonymousModeToSet);
@@ -176,7 +176,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
 
 
   // Primary loading state: wait for auth to resolve AND chat setup to complete
-  if (isLoading || !authResolved) { 
+  if (isLoading || !authResolved) {
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -192,8 +192,8 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         <div className="flex flex-col justify-center items-center h-full text-center p-4">
           <p className="text-lg font-semibold">{chatTitle || "Could not load chat."}</p>
           <p className="text-muted-foreground">
-            {isAuthIssue 
-                ? "Please log in to access this chat." 
+            {isAuthIssue
+                ? "Please log in to access this chat."
                 : "The chat may be invalid, not found, or you might not have access."}
           </p>
           <Button onClick={() => router.push(isAuthIssue ? '/auth' : '/dashboard')} className="mt-4">
@@ -218,7 +218,7 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       </div>
     );
   }
-  
+
   // If we reach here, user can access the chat and, if it's not AI chat, currentUser is valid.
   return (
      <div className="h-full max-h-[calc(100vh-57px-2rem)] md:max-h-[calc(100vh-57px-3rem)]">

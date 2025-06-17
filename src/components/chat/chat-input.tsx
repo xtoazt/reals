@@ -12,13 +12,13 @@ import { ref, serverTimestamp, set, remove, onDisconnect } from 'firebase/databa
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   disabled?: boolean; // General disabled state (e.g., AI responding)
-  chatId?: string; 
+  chatId?: string;
   currentUserProfile?: { uid: string; displayName: string } | null; // Null if not logged in or profile not loaded
 }
 
 const emojis = ['😀', '😂', '😍', '🤔', '😢', '🥳', '👍', '🙏'];
-const TYPING_DEBOUNCE_MS = 1000; 
-const TYPING_STOP_DELAY_MS = 3000; 
+const TYPING_DEBOUNCE_MS = 1000;
+const TYPING_STOP_DELAY_MS = 3000;
 const SEND_ANIMATION_DURATION_MS = 400;
 
 export function ChatInput({ onSendMessage, disabled = false, chatId, currentUserProfile }: ChatInputProps) {
@@ -32,31 +32,34 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
 
   // Cleanup typing status on unmount or when user logs out/chatId changes/profile becomes null
   useEffect(() => {
-    const currentTypingRef = typingStatusRef; 
+    const currentTypingRef = typingStatusRef;
     if (currentTypingRef) {
       const onDisconnectRef = onDisconnect(currentTypingRef);
       onDisconnectRef.remove();
 
       return () => {
-        onDisconnectRef.cancel(); 
-        remove(currentTypingRef); 
+        onDisconnectRef.cancel();
+        remove(currentTypingRef);
       };
     }
   }, [typingStatusRef]); // Re-run if typingStatusRef changes
 
 
   const updateTypingStatus = useCallback((isTyping: boolean) => {
-    // Crucial: Only update if profile and ref are valid
-    if (!typingStatusRef || !currentUserProfile?.uid || !currentUserProfile.displayName) return;
+    // Crucial: Only update if profile and ref are valid, AND displayName is available for the payload
+    if (!typingStatusRef || !currentUserProfile?.uid || !currentUserProfile.displayName) {
+      // console.warn("Skipping typing update: Profile or typing ref not ready.");
+      return;
+    }
 
     if (isTyping) {
-      set(typingStatusRef, { 
-        isTyping: true, 
+      set(typingStatusRef, {
+        isTyping: true,
         timestamp: serverTimestamp(),
-        displayName: currentUserProfile.displayName 
-      });
+        displayName: currentUserProfile.displayName
+      }).catch(error => console.error("Error setting typing status (true):", error));
     } else {
-      remove(typingStatusRef);
+      remove(typingStatusRef).catch(error => console.error("Error removing typing status (false):", error));
     }
     lastTypingUpdateRef.current = Date.now();
   }, [typingStatusRef, currentUserProfile]);
@@ -65,8 +68,10 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
 
-    // Crucial: Only handle typing if profile and ref are valid
-    if (!typingStatusRef || !currentUserProfile?.uid) return;
+    // Crucial: Only handle typing if profile (uid and displayName) and ref are valid
+    if (!typingStatusRef || !currentUserProfile?.uid || !currentUserProfile.displayName) {
+      return;
+    }
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -75,7 +80,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
     if (Date.now() - lastTypingUpdateRef.current > TYPING_DEBOUNCE_MS || e.target.value.length === 1) {
       updateTypingStatus(true);
     }
-    
+
     typingTimeoutRef.current = setTimeout(() => {
       updateTypingStatus(false);
     }, TYPING_STOP_DELAY_MS);
@@ -83,17 +88,17 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
 
   const handleSend = () => {
     // Ensure user profile is available before sending
-    if (message.trim() && !disabled && currentUserProfile) {
-      if (isAnimatingSend) return; 
+    if (message.trim() && !disabled && currentUserProfile?.uid) { // Check uid specifically
+      if (isAnimatingSend) return;
 
       onSendMessage(message);
       setMessage('');
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      // Update typing status only if profile and ref are valid
-      if (typingStatusRef && currentUserProfile) {
-        updateTypingStatus(false); 
+      // Update typing status only if profile (uid and displayName) and ref are valid
+      if (typingStatusRef && currentUserProfile?.uid && currentUserProfile.displayName) {
+        updateTypingStatus(false);
       }
 
       setIsAnimatingSend(true);
@@ -108,7 +113,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
   };
 
   // Overall disabled state for input elements if no profile or if explicitly disabled
-  const isInputDisabled = disabled || !currentUserProfile;
+  const isInputDisabled = disabled || !currentUserProfile?.uid; // Check uid for stricter disabling
 
   return (
     <div className="p-2 md:p-3 border-t bg-card">
@@ -156,15 +161,15 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, currentUser
             <ImageIcon size={18} />
              <span className="sr-only">Upload Image</span>
           </Button>
-          <Button 
-            size="icon" 
-            className="h-8 w-8 md:h-9 md:w-9" 
-            onClick={handleSend} 
+          <Button
+            size="icon"
+            className="h-8 w-8 md:h-9 md:w-9"
+            onClick={handleSend}
             disabled={isInputDisabled || !message.trim() || isAnimatingSend}
           >
             {isAnimatingSend ? (
               <SendHorizonal size={18} className="animate-send-effect" />
-            ) : disabled && !currentUserProfile ? ( // Explicitly check if disabled because AI is responding or if profile is null
+            ) : disabled && !currentUserProfile?.uid ? ( // Check uid specifically
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <SendHorizonal size={18} />
