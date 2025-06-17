@@ -16,17 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { aiChat, type AiChatInput, type AiChatOutput } from '@/ai/flows/ai-chat-flow';
 import { cn } from '@/lib/utils';
 
-
-interface ChatInterfaceProps {
-  chatTitle: string;
-  chatType: 'global' | 'gc' | 'dm' | 'ai';
-  chatId?: string;
-  isAnonymousMode?: boolean;
-  currentUser: FirebaseUser | null;
-  authResolved: boolean;
-}
-
-interface UserProfileData {
+export interface UserProfileData {
   uid: string;
   username: string;
   displayName: string;
@@ -38,19 +28,28 @@ interface UserProfileData {
   isAdmin?: boolean;
 }
 
+interface ChatInterfaceProps {
+  chatTitle: string;
+  chatType: 'global' | 'gc' | 'dm' | 'ai';
+  chatId?: string;
+  isAnonymousMode?: boolean;
+  currentUser: FirebaseUser | null; 
+  loggedInUserProfile: UserProfileData | null; 
+  authResolved: boolean;
+}
+
 interface TypingStatus {
     isTyping: boolean;
     timestamp: number;
     displayName: string;
 }
 
-const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
-const TYPING_TIMEOUT_MS = 5000; // 5 seconds for typing indicator to clear
-const SCROLL_TO_BOTTOM_THRESHOLD = 200; // Pixels from bottom to show button
+const MESSAGE_GROUP_THRESHOLD_MS = 2 * 60 * 1000;
+const TYPING_TIMEOUT_MS = 5000;
+const SCROLL_TO_BOTTOM_THRESHOLD = 200;
 const MESSAGES_TO_LOAD = 50;
 
-// Utility function to fetch user profile data - DOES NOT MUTATE STATE
-async function fetchUserProfileDataUtil(uid: string): Promise<UserProfileData | null> {
+async function fetchNonCurrentUserProfileDataUtil(uid: string): Promise<UserProfileData | null> {
   if (uid === 'ai-chatbot-uid') {
     return {
       uid, username: 'realtalk_ai', displayName: 'RealTalk AI',
@@ -90,9 +89,8 @@ async function fetchUserProfileDataUtil(uid: string): Promise<UserProfileData | 
 }
 
 
-export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, authResolved }: ChatInterfaceProps) {
+export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonymousMode = false, currentUser, loggedInUserProfile, authResolved }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfileData | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isAiResponding, setIsAiResponding] = useState(false);
   const scrollAreaViewportRef = useRef<HTMLDivElement>(null);
@@ -105,41 +103,15 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const prevMessagesLengthRef = useRef(messages.length);
   const messagesBeingMarkedAsRead = useRef(new Set<string>());
 
-
   const typingStatusRef = useMemo(() => (authResolved && chatId) ? ref(database, `typing_status/${chatId}`) : null, [authResolved, chatId]);
   const currentUserTypingRef = useMemo(() => (authResolved && chatId && currentUser?.uid) ? ref(database, `typing_status/${chatId}/${currentUser.uid}`) : null, [authResolved, chatId, currentUser?.uid]);
-
-
+  
   useEffect(() => {
-    if (!authResolved) return; // Wait for auth to be resolved by parent
-
-    if (currentUser?.uid) { // Ensure currentUser and its uid are available
-      // Check if current user's profile is in cache or needs fetching
-      if (!usersCache[currentUser.uid]) {
-        fetchUserProfileDataUtil(currentUser.uid).then(profile => {
-          if (profile) {
-            setUsersCache(prev => ({ ...prev, [currentUser.uid!]: profile }));
-            setCurrentUserProfile(profile);
-          } else {
-            const fallbackUsername = currentUser.email?.split('@')[0] || "user";
-            const fallbackProfile: UserProfileData = {
-              uid: currentUser.uid!, username: fallbackUsername,
-              displayName: currentUser.displayName || fallbackUsername,
-              avatar: `https://placehold.co/40x40.png?text=${(currentUser.displayName || "U").charAt(0)}`,
-            };
-            setUsersCache(prev => ({ ...prev, [currentUser.uid!]: fallbackProfile }));
-            setCurrentUserProfile(fallbackProfile);
-          }
-        });
-      } else {
-        // Profile is in cache, set it
-        setCurrentUserProfile(usersCache[currentUser.uid]);
-      }
-    } else {
-      // No current user / logged out
-      setCurrentUserProfile(null);
+    // Prime usersCache with loggedInUserProfile if available
+    if (loggedInUserProfile) {
+      setUsersCache(prev => ({ ...prev, [loggedInUserProfile.uid]: loggedInUserProfile }));
     }
-  }, [authResolved, currentUser, usersCache]); // usersCache is a dependency to re-derive currentUserProfile if cache updates
+  }, [loggedInUserProfile]);
 
 
   useEffect(() => {
@@ -177,7 +149,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     if (chatType === 'ai') {
       setIsLoadingMessages(false);
       if (chatId === 'ai-chatbot' && messages.length === 0) {
-        fetchUserProfileDataUtil('ai-chatbot-uid').then(aiProfile => {
+        fetchNonCurrentUserProfileDataUtil('ai-chatbot-uid').then(aiProfile => { // Use specific fetcher
             if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
             setMessages([
               {
@@ -193,8 +165,8 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       }
       return;
     }
-
-    if (!currentUser?.uid || !chatId ) { // Ensure currentUser.uid is available
+    
+    if (!currentUser?.uid || !chatId || (chatType !== 'ai' && !loggedInUserProfile) ) {
         setIsLoadingMessages(false);
         setMessages([]);
         return;
@@ -228,10 +200,11 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       const profilesToFetchPromises: Promise<void>[] = [];
 
       uidsInSnapshot.forEach(uid => {
-        if (usersCache[uid] === undefined) { // Fetch only if not attempted before (undefined, not null)
+         // Only fetch if not the current user (whose profile is passed as prop) AND not already cached
+        if (uid !== loggedInUserProfile?.uid && usersCache[uid] === undefined) {
           profilesToFetchPromises.push(
-            fetchUserProfileDataUtil(uid).then(profile => {
-              newProfilesToFetch[uid] = profile; // Store fetched profile (or null if not found)
+            fetchNonCurrentUserProfileDataUtil(uid).then(profile => { // Use specific fetcher
+              newProfilesToFetch[uid] = profile;
             })
           );
         }
@@ -239,16 +212,29 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
       await Promise.all(profilesToFetchPromises);
 
+      // Create a snapshot of current usersCache before updating it
+      let currentCombinedCache = { ...usersCache };
       if (Object.keys(newProfilesToFetch).length > 0) {
+        currentCombinedCache = { ...currentCombinedCache, ...newProfilesToFetch };
         setUsersCache(prevCache => ({ ...prevCache, ...newProfilesToFetch }));
       }
+      // Ensure loggedInUserProfile is in the cache for consistent rendering
+      if (loggedInUserProfile && currentCombinedCache[loggedInUserProfile.uid] !== loggedInUserProfile) {
+         currentCombinedCache[loggedInUserProfile.uid] = loggedInUserProfile;
+         setUsersCache(prevCache => ({ ...prevCache, [loggedInUserProfile.uid]: loggedInUserProfile }));
+      }
 
-      const currentCombinedCache = { ...usersCache, ...newProfilesToFetch }; // Use immediately for this render pass
 
       const resolvedMessages = messageDataArray.map((msgEntry) => {
         const msgData = msgEntry.data;
         const senderUid = msgData.senderUid;
         let profile: UserProfileData | null | undefined = currentCombinedCache[senderUid];
+        
+        // If profile is still undefined here (e.g. for loggedInUser if cache update hasn't reflected), try one more time
+        if (!profile && senderUid === loggedInUserProfile?.uid) {
+            profile = loggedInUserProfile;
+        }
+
 
         const defaultAvatarText = (profile?.displayName || msgData.senderName || "U").charAt(0).toUpperCase();
         const avatarUrl = profile?.avatar || msgData.senderAvatar || `https://placehold.co/40x40.png?text=${defaultAvatarText}`;
@@ -293,7 +279,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     });
 
     return () => off(messagesRefQuery, 'value', listener);
-  }, [authResolved, currentUser, chatType, chatId, toast, isAnonymousMode, usersCache]);
+  }, [authResolved, currentUser, chatType, chatId, toast, isAnonymousMode, loggedInUserProfile]); // usersCache removed, loggedInUserProfile added
 
 
   useEffect(() => {
@@ -315,23 +301,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   const handleSendMessage = async (content: string) => {
-    if (!authResolved || !currentUser?.uid || !currentUserProfile) { // Ensure currentUser.uid and currentUserProfile
+    if (!authResolved || !currentUser?.uid || !loggedInUserProfile) {
       toast({ title: "Not Logged In", description: "Please log in to send messages.", variant: "destructive" });
       return;
     }
-    if (currentUserTypingRef && !isAnonymousMode && currentUserProfile.displayName) { // Check displayName for typing payload
+    if (currentUserTypingRef && !isAnonymousMode && loggedInUserProfile.displayName) {
         remove(currentUserTypingRef);
     }
 
     if (chatType === 'ai') {
         const userMessage: Message = {
-            id: String(Date.now()), sender: currentUserProfile.displayName, senderUid: currentUserProfile.uid,
-            senderUsername: currentUserProfile.username,
-            avatar: currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`,
+            id: String(Date.now()), sender: loggedInUserProfile.displayName, senderUid: loggedInUserProfile.uid,
+            senderUsername: loggedInUserProfile.username,
+            avatar: loggedInUserProfile.avatar || `https://placehold.co/40x40.png?text=${loggedInUserProfile.displayName.charAt(0)}`,
             content, originalTimestamp: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isOwnMessage: true, senderNameColor: currentUserProfile.nameColor, senderTitle: currentUserProfile.title,
-            senderIsShinyGold: currentUserProfile.isShinyGold, senderIsShinySilver: currentUserProfile.isShinySilver,
-            senderIsAdmin: currentUserProfile.isAdmin, chatType: 'ai',
+            isOwnMessage: true, senderNameColor: loggedInUserProfile.nameColor, senderTitle: loggedInUserProfile.title,
+            senderIsShinyGold: loggedInUserProfile.isShinyGold, senderIsShinySilver: loggedInUserProfile.isShinySilver,
+            senderIsAdmin: loggedInUserProfile.isAdmin, chatType: 'ai',
         };
         setMessages(prev => [...prev, userMessage]);
         setIsAiResponding(true);
@@ -342,7 +328,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
           let aiProfile = usersCache['ai-chatbot-uid'];
           if (!aiProfile) {
-              aiProfile = await fetchUserProfileDataUtil('ai-chatbot-uid');
+              aiProfile = await fetchNonCurrentUserProfileDataUtil('ai-chatbot-uid'); // Use specific fetcher
               if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
           }
 
@@ -357,13 +343,12 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
         } catch (error: any) {
           console.error("Error calling AI chat flow or processing its response:", error);
           const errorMessageContent = (error.message && error.message.includes("AI") ? error.message : "Sorry, I encountered an error. Please try again.") || "The AI is unable to respond at this moment.";
-
+          
           let aiProfile = usersCache['ai-chatbot-uid'];
-          if (!aiProfile) {
-              aiProfile = await fetchUserProfileDataUtil('ai-chatbot-uid');
+           if (!aiProfile) {
+              aiProfile = await fetchNonCurrentUserProfileDataUtil('ai-chatbot-uid'); // Use specific fetcher
               if (aiProfile) setUsersCache(prev => ({...prev, 'ai-chatbot-uid': aiProfile}));
           }
-
           const errorMessage: Message = {
             id: String(Date.now() + 1), sender: aiProfile?.displayName || 'RealTalk AI', senderUid: 'ai-chatbot-uid',
             senderUsername: aiProfile?.username || 'realtalk_ai',
@@ -393,23 +378,23 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     const messagesDbRef = ref(database, messagesDbRefPath);
 
     const baseMessagePayload = {
-      senderUid: currentUserProfile.uid,
-      senderName: isAnonymousMode ? "Anonymous" : currentUserProfile.displayName,
-      senderUsername: isAnonymousMode ? `anon_${currentUserProfile.uid.substring(0,6)}` : currentUserProfile.username,
-      senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (currentUserProfile.avatar || `https://placehold.co/40x40.png?text=${currentUserProfile.displayName.charAt(0)}`),
+      senderUid: loggedInUserProfile.uid,
+      senderName: isAnonymousMode ? "Anonymous" : loggedInUserProfile.displayName,
+      senderUsername: isAnonymousMode ? `anon_${loggedInUserProfile.uid.substring(0,6)}` : loggedInUserProfile.username,
+      senderAvatar: isAnonymousMode ? `https://placehold.co/40x40.png?text=??` : (loggedInUserProfile.avatar || `https://placehold.co/40x40.png?text=${loggedInUserProfile.displayName.charAt(0)}`),
       content, timestamp: serverTimestamp(), reactions: {},
     };
     const newMessagePayload: { [key: string]: any } = { ...baseMessagePayload };
 
     if (!isAnonymousMode) {
-        newMessagePayload.senderIsShinyGold = currentUserProfile.isShinyGold || false;
-        newMessagePayload.senderIsShinySilver = currentUserProfile.isShinySilver || false;
-        newMessagePayload.senderIsAdmin = currentUserProfile.isAdmin || false;
-        if (!currentUserProfile.isShinyGold && !currentUserProfile.isShinySilver && currentUserProfile.nameColor) {
-          newMessagePayload.senderNameColor = currentUserProfile.nameColor;
+        newMessagePayload.senderIsShinyGold = loggedInUserProfile.isShinyGold || false;
+        newMessagePayload.senderIsShinySilver = loggedInUserProfile.isShinySilver || false;
+        newMessagePayload.senderIsAdmin = loggedInUserProfile.isAdmin || false;
+        if (!loggedInUserProfile.isShinyGold && !loggedInUserProfile.isShinySilver && loggedInUserProfile.nameColor) {
+          newMessagePayload.senderNameColor = loggedInUserProfile.nameColor;
         }
-        if (currentUserProfile.title) {
-          newMessagePayload.senderTitle = currentUserProfile.title;
+        if (loggedInUserProfile.title) {
+          newMessagePayload.senderTitle = loggedInUserProfile.title;
         }
     }
 
@@ -456,7 +441,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
           if (!userScrolledSignificantlyUp) setHasNewMessagesWhileScrolledUp(false);
         }
       }
-      if (chatType === 'dm' && currentUser?.uid && !atBottom) { // Ensure currentUser.uid before iterating
+      if (chatType === 'dm' && currentUser?.uid && !atBottom) {
           messages.forEach(msg => {
               if (msg.senderUid !== currentUser.uid && !msg.readByRecipientTimestamp && !messagesBeingMarkedAsRead.current.has(msg.id)) {
                   const messageElement = document.getElementById(`message-${msg.id}`);
@@ -491,22 +476,22 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   }, []);
 
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
-    if (!authResolved || !currentUser?.uid || !currentUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return; // Ensure currentUser.uid
+    if (!authResolved || !currentUser?.uid || !loggedInUserProfile || !msgChatType || !currentChatId || isAnonymousMode) return;
 
     const messagePathPrefix = msgChatType === 'gc' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
 
     try {
       await runTransaction(reactionRef, (currentData) => {
-        if (currentData === null) return { count: 1, users: { [currentUser.uid!]: true } }; // Use ! for currentUser.uid as it's checked
+        if (currentData === null) return { count: 1, users: { [currentUser.uid!]: true } };
         const currentUsers = currentData.users || {};
-        if (currentUsers[currentUser.uid!]) { // Use !
+        if (currentUsers[currentUser.uid!]) {
           currentData.count = (currentData.count || 0) - 1;
-          delete currentUsers[currentUser.uid!]; // Use !
+          delete currentUsers[currentUser.uid!];
           if (currentData.count <= 0) return null;
         } else {
           currentData.count = (currentData.count || 0) + 1;
-          currentUsers[currentUser.uid!] = true; // Use !
+          currentUsers[currentUser.uid!] = true;
         }
         currentData.users = currentUsers;
         return currentData;
@@ -515,7 +500,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       console.error("Error toggling reaction:", error);
       toast({ title: "Error", description: "Could not update reaction.", variant: "destructive" });
     }
-  }, [authResolved, currentUser, currentUserProfile, toast, isAnonymousMode]);
+  }, [authResolved, currentUser, loggedInUserProfile, toast, isAnonymousMode]);
 
 
   return (
@@ -571,7 +556,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                 );
               })
             )}
-            {chatType === 'ai' && isAiResponding && (
+            {chatType === 'ai' && isAiResponding && loggedInUserProfile && ( // Guard with loggedInUserProfile
                 <div className="flex items-center space-x-2 p-2.5">
                     <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">
                         <Avatar className="h-8 w-8">
@@ -603,11 +588,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
       <CardFooter className="p-0">
         <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && !currentUser?.uid)} // Ensure currentUser.uid for non-AI
+            disabled={!authResolved || (chatType === 'ai' && isAiResponding) || (chatType !== 'ai' && (!currentUser?.uid || !loggedInUserProfile))}
             chatId={authResolved ? chatId : undefined}
-            currentUserProfile={(authResolved && currentUser?.uid && currentUserProfile) ? (isAnonymousMode ? { uid: currentUserProfile.uid, displayName: "You" } : currentUserProfile) : null} // Ensure currentUser.uid before passing profile
+            loggedInUserProfile={(authResolved && currentUser?.uid && loggedInUserProfile) ? (isAnonymousMode ? { ...loggedInUserProfile, displayName: "You (Anonymous)" } : loggedInUserProfile) : null}
         />
       </CardFooter>
     </Card>
   );
 }
+
+    

@@ -72,7 +72,7 @@
             "$other": { ".validate": false }
           }
         },
-        "$messageId": { // Non-GC messages
+        "$messageId": { 
           ".validate": "!$chatId.contains('gc-') && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp']) && ((!data.exists() && (newData.child('senderUid').val() === auth.uid || newData.child('senderUid').val() === 'system')) || (data.exists() && newData.child('senderUid').val() === data.child('senderUid').val())) && newData.child('timestamp').val() === now",
           "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },

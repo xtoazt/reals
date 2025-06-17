@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,21 +51,23 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
   const [friendsToDisplay, setFriendsToDisplay] = useState<Friend[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isCreatingGC, setIsCreatingGC] = useState(false);
+  const isOpenRef = useRef(isOpen); 
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
 
   const handleDialogOnOpenChange = useCallback((openValue: boolean) => {
     setIsOpen(openValue);
-  }, []); // setIsOpen is stable
+  }, []); 
 
   useEffect(() => {
     if (isOpen) {
-      // Reset form states for a fresh dialog instance
       setGCName('');
       setSelectedFriends([]);
       setIsCreatingGC(false); 
-
-      // Reset friend list states
-      setFriendsToDisplay([]); // Clear previous list
-      setIsLoadingFriends(true); // Set loading state
+      setFriendsToDisplay([]);
+      setIsLoadingFriends(true);
 
       if (propsCurrentUser?.uid) {
         const loadFriends = async () => {
@@ -73,6 +75,7 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
             const friendsDbRef = ref(database, `friends/${propsCurrentUser.uid}`);
             const friendsSnapshot = await get(friendsDbRef);
             const friendsData = friendsSnapshot.val();
+            let fetchedFriendsList: Friend[] = [];
 
             if (friendsData && Object.keys(friendsData).length > 0) {
               const friendUIDs = Object.keys(friendsData);
@@ -91,42 +94,38 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
                 }
                 return null;
               });
-              const fetchedFriendsList = (await Promise.all(fetchedFriendsPromises)).filter(f => f !== null) as Friend[];
-              if (isOpen) { // Check if dialog is still open before setting state
-                setFriendsToDisplay(fetchedFriendsList);
-              }
-            } else {
-              if (isOpen) {
-                setFriendsToDisplay([]);
-              }
+              fetchedFriendsList = (await Promise.all(fetchedFriendsPromises)).filter(f => f !== null) as Friend[];
             }
+            
+            if (isOpenRef.current) { 
+              setFriendsToDisplay(fetchedFriendsList);
+            }
+
           } catch (error) {
             console.error("Error loading friends data for GC dialog:", error);
-            if (isOpen) {
+            if (isOpenRef.current) {
               toast({ title: "Error", description: "Could not load friends list.", variant: "destructive" });
-              setFriendsToDisplay([]);
+              setFriendsToDisplay([]); // Ensure it's reset on error too
             }
           } finally {
-            if (isOpen) { // Check if dialog is still open
+            if (isOpenRef.current) { 
               setIsLoadingFriends(false);
             }
           }
         };
         loadFriends();
       } else {
-        // No current user, or UID is missing
-        if (isOpen) {
-          setFriendsToDisplay([]);
-          setIsLoadingFriends(false);
+         if (isOpenRef.current) {
+            setFriendsToDisplay([]);
+            setIsLoadingFriends(false);
         }
       }
     } else {
-      // Dialog is closed, ensure loading is false. Other states reset when DialogContent unmounts.
-      if (!isOpen && isLoadingFriends) { // Only set if it was true and now dialog is closing
+      if (isLoadingFriends) {
          setIsLoadingFriends(false);
       }
     }
-  }, [isOpen, propsCurrentUser?.uid, toast]); // toast is included as it's used in the effect.
+  }, [isOpen, propsCurrentUser?.uid]); // `toast` removed from dependencies
 
   const handleSelectFriendInForm = useCallback((friendId: string) => {
     if (isCreatingGC) return; 
@@ -180,23 +179,6 @@ export function CreateGCDialog({ children, currentUser: propsCurrentUser, curren
       };
       await push(messagesRef, initialMessage);
       
-      selectedFriends.forEach(friendUid => {
-        const notificationKey = push(ref(database, `user_notifications/${friendUid}`)).key;
-        if (notificationKey) {
-            const notificationRef = ref(database, `user_notifications/${friendUid}/${notificationKey}`);
-            set(notificationRef, {
-              type: 'gc_invite',
-              title: `Added to "${gcName}"`,
-              message: `${creatorDisplayName} added you to the group chat.`,
-              chatId: newGCId,
-              timestamp: serverTimestamp(),
-              read: false,
-              fromUid: propsCurrentUser.uid,
-              fromUsername: propsCurrentUserProfile.username || 'user'
-            }).catch(err => console.error("Failed to send notification to friend:", friendUid, err));
-        }
-      });
-
       toast({
         title: 'Group Chat Created!',
         description: `"${gcName}" is ready.`,

@@ -2,13 +2,14 @@
 'use client';
 
 import { ChatInterface } from '@/components/chat/chat-interface';
-import { useRouter } from 'next/navigation'; // Keep next/navigation for router
-import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, useCallback } from 'react';
 import { auth, database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { UserProfileData as SharedUserProfileData } from '@/components/chat/chat-interface';
 
 interface ResolvedParams {
   chatId: string;
@@ -18,23 +19,47 @@ interface ChatPageProps {
   params: Promise<ResolvedParams>;
 }
 
-interface UserProfileData {
-  displayName: string;
-}
-
 interface GCChatData {
     gcName: string;
     members?: { [uid: string]: boolean };
 }
+
+async function fetchPageLevelUserProfile(uid: string): Promise<SharedUserProfileData | null> {
+  if (!uid) return null;
+  try {
+    const userRef = ref(database, `users/${uid}`);
+    const snapshot = await get(userRef);
+    if (snapshot.exists()) {
+      const userData = snapshot.val();
+      return {
+        uid,
+        username: userData.username,
+        displayName: userData.displayName || userData.username,
+        avatar: userData.avatar,
+        nameColor: userData.nameColor,
+        title: userData.title,
+        isShinyGold: userData.isShinyGold || false,
+        isShinySilver: userData.isShinySilver || false,
+        isAdmin: userData.isAdmin || false,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error fetching page level user profile for ${uid}:`, error);
+    return null;
+  }
+}
+
 
 export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   const params = React.use(paramsPromise);
   const unwrappedChatId = params.chatId;
 
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined); // undefined means not yet known
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null | undefined>(undefined);
+  const [pageLevelCurrentUserProfile, setPageLevelCurrentUserProfile] = useState<SharedUserProfileData | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Start true
+  const [isLoading, setIsLoading] = useState(true);
   const [chatTitle, setChatTitle] = useState('');
   const [chatType, setChatType] = useState<'global' | 'gc' | 'dm' | 'ai'>('global');
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
@@ -46,9 +71,17 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   }, [unwrappedChatId]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user); // user can be null if not logged in
-      setAuthResolved(true);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        setIsLoading(true); // Set loading true while fetching profile
+        const profile = await fetchPageLevelUserProfile(user.uid);
+        setPageLevelCurrentUserProfile(profile);
+        // setIsLoading(false); // Loading will be handled by the main effect
+      } else {
+        setPageLevelCurrentUserProfile(null);
+      }
+      setAuthResolved(true); // Auth is resolved regardless of profile fetch outcome here
     });
     return () => unsubscribe();
   }, []);
@@ -56,11 +89,17 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
   useEffect(() => {
     const performChatSetup = async () => {
       if (!authResolved) {
-        setIsLoading(true); // Still waiting for auth to resolve
+        setIsLoading(true);
         return;
       }
 
-      setIsLoading(true); // Auth is resolved, now determining chat access
+      // If user is logged in but profile hasn't been fetched yet for non-AI chats, wait.
+      if (currentUser && determinedInitialType !== 'ai' && !pageLevelCurrentUserProfile) {
+        setIsLoading(true); // Keep loading until profile is available
+        return;
+      }
+      
+      setIsLoading(true); // Start loading for this setup pass
 
       let determinedInitialType: 'global' | 'gc' | 'dm' | 'ai' = 'global';
       if (resolvedChatId === 'global' || resolvedChatId === 'global-unblocked' || resolvedChatId === 'global-school' || resolvedChatId === 'global-anonymous' || resolvedChatId === 'global-support') {
@@ -78,21 +117,18 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       let anonymousModeToSet = false;
       let finalCanAccess = false;
 
-      // Case 1: Auth resolved, but no user logged in (currentUser is null)
-      if (currentUser === null) {
+      if (currentUser === null) { 
         if (determinedInitialType === 'ai') {
             titleToSet = 'AI Chatbot';
             typeToSet = 'ai';
-            finalCanAccess = true; // AI chat accessible when logged out
+            finalCanAccess = true;
         } else {
-            // All other chat types require login
             titleToSet = "Authentication Required";
-            typeToSet = determinedInitialType; // Keep original type for message
+            typeToSet = determinedInitialType;
             finalCanAccess = false;
         }
-      }
-      // Case 2: Auth resolved, and user is logged in (currentUser is a FirebaseUser object)
-      else if (currentUser) {
+      } else if (currentUser && (determinedInitialType === 'ai' || pageLevelCurrentUserProfile)) { 
+        // For non-AI chats, proceed only if profile is loaded
         if (determinedInitialType === 'global') {
           titleToSet =
             resolvedChatId === 'global' ? 'Global Chat' :
@@ -106,17 +142,18 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
         } else if (determinedInitialType === 'ai') {
           titleToSet = 'AI Chatbot';
           typeToSet = 'ai';
-          finalCanAccess = true; // AI chat accessible when logged in
+          finalCanAccess = true;
         } else if (determinedInitialType === 'dm') {
           typeToSet = 'dm';
           const uids = resolvedChatId.substring(3).split('_');
           const otherUserId = uids.find(uid => uid !== currentUser.uid);
           if (otherUserId) {
             try {
+              // Fetch other user's display name for title
               const userRef = ref(database, `users/${otherUserId}`);
               const snapshot = await get(userRef);
               if (snapshot.exists()) {
-                const userData = snapshot.val() as UserProfileData;
+                const userData = snapshot.val() as {displayName:string};
                 titleToSet = `Chat with ${userData.displayName || 'User'}`;
                 finalCanAccess = true;
               } else {
@@ -159,24 +196,27 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
           titleToSet = "Invalid Chat ID";
           finalCanAccess = false;
         }
+      } else if (currentUser && determinedInitialType !== 'ai' && !pageLevelCurrentUserProfile) {
+        // This case is where auth is resolved, user exists, but profile isn't loaded yet for a non-AI chat.
+        // We are already setting setIsLoading(true) above, so we just wait.
+        // No need to set finalCanAccess to false here yet, as profile might load.
       }
-      // Case 3: Auth resolved, but currentUser is still undefined (should be rare if onAuthStateChanged is working)
-      // This will fall through, and finalCanAccess will remain false unless it's an AI chat.
+
 
       setChatTitle(titleToSet);
       setChatType(typeToSet);
       setIsAnonymousMode(anonymousModeToSet);
       setCanAccessChat(finalCanAccess);
-      setIsLoading(false); // All decisions made, stop loading for this run
+      setIsLoading(false); // All decisions for *this pass* are made.
     };
 
     performChatSetup();
 
-  }, [resolvedChatId, currentUser, authResolved, router]);
+  }, [resolvedChatId, currentUser, authResolved, router, pageLevelCurrentUserProfile]);
 
 
-  // Primary loading state: wait for auth to resolve AND chat setup to complete
-  if (isLoading || !authResolved) {
+  // Primary loading state: waits for auth, profile (if needed), and chat setup.
+  if (isLoading || !authResolved || (currentUser && chatType !== 'ai' && !pageLevelCurrentUserProfile)) {
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -203,15 +243,12 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
       );
   }
 
-  // Stricter guard for non-AI chats: Ensure currentUser is a valid User object.
-  // This check is after `canAccessChat` is true, so it's a final sanity check.
-  if (chatType !== 'ai' && !currentUser) {
-    // This case should ideally be caught by `canAccessChat` logic if currentUser is null.
-    // However, it's a safeguard if `canAccessChat` was somehow true but `currentUser` is not a user object.
+  // Stricter guard for non-AI chats: Ensure currentUser (auth object) and pageLevelCurrentUserProfile are valid.
+  if (chatType !== 'ai' && (!currentUser || !pageLevelCurrentUserProfile)) {
     return (
       <div className="flex flex-col justify-center items-center h-full text-center p-4">
-        <p className="text-lg font-semibold">Authentication Required</p>
-        <p className="text-muted-foreground">Please log in to access this chat.</p>
+        <p className="text-lg font-semibold">Authentication or Profile Error</p>
+        <p className="text-muted-foreground">Please log in and ensure your profile is fully loaded to access this chat.</p>
         <Button onClick={() => router.push('/auth')} className="mt-4">
           Go to Login
         </Button>
@@ -219,18 +256,20 @@ export default function ChatPage({ params: paramsPromise }: ChatPageProps) {
     );
   }
 
-  // If we reach here, user can access the chat and, if it's not AI chat, currentUser is valid.
   return (
      <div className="h-full max-h-[calc(100vh-57px-2rem)] md:max-h-[calc(100vh-57px-3rem)]">
       <ChatInterface
-        key={`${resolvedChatId}-${currentUser?.uid || 'loggedout'}`} // Key ensures remount on user/chat change
+        key={`${resolvedChatId}-${currentUser?.uid || 'loggedout'}`}
         chatTitle={chatTitle}
         chatType={chatType}
         chatId={resolvedChatId}
         isAnonymousMode={isAnonymousMode}
-        currentUser={currentUser} // Pass currentUser (can be null for AI chat, or User object for others)
-        authResolved={authResolved} // Pass authResolved for ChatInterface to know auth state
+        currentUser={currentUser} 
+        loggedInUserProfile={pageLevelCurrentUserProfile} 
+        authResolved={authResolved}
       />
     </div>
   );
 }
+
+    
