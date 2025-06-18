@@ -30,6 +30,7 @@
       }
     },
     "chats": {
+      ".read": "auth != null", // Allows listing of chat IDs and their direct metadata
       "$chatId": {
         ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.matches(/^team-.*/) && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || $chatId === 'ai-chatbot' || ($chatId.matches(/^team-.*/) && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
         ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.matches(/^team-.*/) && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.matches(/^team-.*/) && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
@@ -163,4 +164,5 @@
     }
   }
 }
+    
     
