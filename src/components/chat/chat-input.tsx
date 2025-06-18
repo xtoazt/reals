@@ -1,13 +1,13 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Paperclip, SmilePlus, SendHorizonal, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { database, auth } from '@/lib/firebase';
-import { ref, serverTimestamp, set, remove, onDisconnect } from 'firebase/database';
+import { ref, serverTimestamp, set, remove, onDisconnect, type DatabaseReference } from 'firebase/database';
 import type { UserProfileData } from './chat-interface';
 
 interface ChatInputProps {
@@ -15,6 +15,7 @@ interface ChatInputProps {
   disabled?: boolean;
   chatId?: string;
   loggedInUserProfile?: UserProfileData | null;
+  chatType?: 'global' | 'team' | 'dm' | 'ai';
 }
 
 const emojis = ['😀', '😂', '😍', '🤔', '😢', '🥳', '👍', '🙏'];
@@ -22,30 +23,56 @@ const TYPING_DEBOUNCE_MS = 1000;
 const TYPING_STOP_DELAY_MS = 3000;
 const SEND_ANIMATION_DURATION_MS = 400;
 
-export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUserProfile }: ChatInputProps) {
+export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUserProfile, chatType }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingUpdateRef = useRef<number>(0);
   const [isAnimatingSend, setIsAnimatingSend] = useState(false);
 
-  const typingStatusRef = loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && chatId ? ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`) : null;
+  const onDisconnectHandleRef = useRef<any>(null); // To store the onDisconnect handle
+
+  // Memoize typingStatusRef to ensure it's stable unless dependencies change
+  const typingStatusRef = useMemo(() => {
+    if (loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && chatId) {
+      return ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`);
+    }
+    return null;
+  }, [loggedInUserProfile?.uid, chatId]);
+
 
   useEffect(() => {
-    if (!loggedInUserProfile?.uid || typeof loggedInUserProfile.uid !== 'string' || !chatId) {
-      return;
+    // If a previous onDisconnect handle exists, cancel it.
+    // This is crucial if typingStatusRef changes (due to chatId or loggedInUserProfile.uid changing)
+    // or if the component is about to unmount without setting a new one.
+    if (onDisconnectHandleRef.current) {
+      onDisconnectHandleRef.current.cancel().catch((e: any) => console.warn("Error cancelling previous onDisconnect for typing:", e));
+      onDisconnectHandleRef.current = null; // Clear the ref
     }
 
-    const currentTypingRef = ref(database, `typing_status/${chatId}/${loggedInUserProfile.uid}`);
-    const onDisconnectRefHandle = onDisconnect(currentTypingRef);
-    onDisconnectRefHandle.remove().catch(e => console.warn("Error on onDisconnect().remove() for typing status:", e));
+    // Guard: Do not proceed if typingStatusRef is null (meaning uid or chatId is missing/invalid)
+    // or if loggedInUserProfile itself is not available (though typingStatusRef check largely covers this for uid)
+    if (!typingStatusRef || !loggedInUserProfile || typeof loggedInUserProfile.uid !== 'string' || !loggedInUserProfile.uid) {
+      return; // Exit if essential data for setting up onDisconnect is missing.
+    }
+
+    // At this point, typingStatusRef is valid and corresponds to the current user and chat.
+    // Assign it to a variable to ensure the closure for onDisconnect().remove() uses this specific ref.
+    const currentTypingRefForOnDisconnect = typingStatusRef;
+
+    onDisconnectHandleRef.current = onDisconnect(currentTypingRefForOnDisconnect);
+    onDisconnectHandleRef.current.remove().catch((e: any) => console.warn("Error setting onDisconnect().remove() for typing status:", e));
 
     return () => {
-      onDisconnectRefHandle.cancel().catch(e => console.warn("Error on onDisconnect().cancel() for typing status:", e));
-      if (auth.currentUser?.uid === loggedInUserProfile?.uid) {
-          remove(currentTypingRef).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
+      if (onDisconnectHandleRef.current) {
+        onDisconnectHandleRef.current.cancel().catch((e: any) => console.warn("Error on onDisconnect().cancel() for typing status in cleanup:", e));
+        onDisconnectHandleRef.current = null;
+      }
+      // Only remove if this component instance was responsible for the current user's typing status for this specific ref.
+      if (auth.currentUser?.uid === loggedInUserProfile?.uid && currentTypingRefForOnDisconnect) {
+          remove(currentTypingRefForOnDisconnect).catch(e => console.warn("Error removing typing status on unmount/cleanup:", e));
       }
     };
-  }, [loggedInUserProfile?.uid, chatId]);
+  }, [typingStatusRef, loggedInUserProfile]); // Effect reruns if path (via typingStatusRef) or user identity changes.
 
 
   const updateTypingStatus = useCallback((isTyping: boolean) => {
@@ -95,7 +122,8 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (typingStatusRef && loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && loggedInUserProfile.displayName) { 
+      // Ensure typing status is cleared only if it was properly set up
+      if (typingStatusRef && loggedInUserProfile?.uid && typeof loggedInUserProfile.uid === 'string' && loggedInUserProfile.displayName) {
         updateTypingStatus(false);
       }
 
@@ -111,6 +139,10 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
   };
 
   const isInputDisabled = disabled || !loggedInUserProfile?.uid;
+  const placeholderText = isInputDisabled
+    ? (disabled && chatType === 'ai' ? "AI is thinking..." : "Login to chat...")
+    : "Type a message...";
+
 
   return (
     <div className="p-2 md:p-3 border-t bg-card">
@@ -124,7 +156,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
               handleSend();
             }
           }}
-          placeholder={isInputDisabled ? (disabled && chatType === 'ai' ? "AI is thinking..." : "Login to chat...") : "Type a message..."}
+          placeholder={placeholderText}
           className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm"
           rows={1}
           disabled={isInputDisabled}
@@ -166,7 +198,7 @@ export function ChatInput({ onSendMessage, disabled = false, chatId, loggedInUse
           >
             {isAnimatingSend ? (
               <SendHorizonal size={18} className="animate-send-effect" />
-            ) : disabled && !isInputDisabled ? ( 
+            ) : disabled && !isInputDisabled ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <SendHorizonal size={18} />
