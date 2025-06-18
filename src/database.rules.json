@@ -32,8 +32,11 @@
     "chats": {
       ".read": "auth != null",
       "$chatId": {
+        // TEMPORARY DEBUGGING RULE: Very permissive write access to chat node if authenticated.
+        ".write": "auth != null", 
         ".read": "auth != null && ( ($chatId.contains('dm_') && !$chatId.matches(/^team-.*/) && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || $chatId === 'ai-chatbot' || ($chatId.matches(/^team-.*/) && root.child('chats').child($chatId).child('members').child(auth.uid).exists()) )",
-        ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.matches(/^team-.*/) && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.matches(/^team-.*/) && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
+        // Original .write rule (commented out for debugging):
+        // ".write": "auth != null && ( ($chatId.contains('dm_') && !$chatId.matches(/^team-.*/) && $chatId.contains(auth.uid)) || $chatId === 'global' || $chatId === 'global-unblocked' || $chatId === 'global-school' || $chatId === 'global-anonymous' || $chatId === 'global-support' || ($chatId === 'ai-chatbot' && auth != null) || ($chatId.matches(/^team-.*/) && ( (data.exists() && data.child('members').child(auth.uid).exists()) || (!data.exists() && newData.child('members').child(auth.uid).exists() && newData.child('createdBy').val() === auth.uid ) )) )",
         ".indexOn": ["timestamp"],
         "teamName": { ".validate": "$chatId.matches(/^team-.*/) && newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "createdBy": { ".validate": "$chatId.matches(/^team-.*/) && newData.isString() && (newData.val() === auth.uid || newData.val() === 'system')" },
@@ -46,10 +49,7 @@
         "messages": {
           ".indexOn": ["timestamp"],
           "$messageId": {
-            // TEMPORARY DEBUGGING RULE: Very permissive write validation.
-            ".validate": "$chatId.matches(/^team-.*/) && newData.hasChild('senderUid') && newData.child('senderUid').val() === auth.uid",
-            // Original more specific validations (commented out or to be re-added piece by piece):
-            // ".validate": "$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
+            ".validate": "$chatId.matches(/^team-.*/) && newData.child('senderUid').val() === auth.uid",
             "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
             "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -77,10 +77,7 @@
           }
         },
         "$messageId": {
-           // TEMPORARY DEBUGGING RULE: Very permissive write validation.
-          ".validate": "!$chatId.matches(/^team-.*/) && newData.hasChild('senderUid') && newData.child('senderUid').val() === auth.uid",
-          // Original more specific validations (commented out or to be re-added piece by piece):
-          // ".validate": "!$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
+          ".validate": "!$chatId.matches(/^team-.*/) && newData.child('senderUid').val() === auth.uid",
           "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -170,3 +167,5 @@
     }
   }
 }
+
+    

@@ -173,7 +173,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
     setIsLoadingMessages(true);
     let messagesPath: string;
-    if (chatType === 'team') { // Changed from 'gc'
+    if (chatType === 'team') {
       messagesPath = `chats/${chatId}/messages`;
     } else {
       messagesPath = `chats/${chatId}`;
@@ -296,8 +296,13 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
 
 
   const handleSendMessage = async (content: string) => {
+    console.log('[ChatInterface] handleSendMessage called. authResolved:', authResolved, 
+                'currentUser.uid:', currentUser?.uid, 
+                'loggedInUserProfile.uid:', loggedInUserProfile?.uid);
+
     if (!authResolved || !currentUser?.uid || !loggedInUserProfile?.uid || typeof loggedInUserProfile.uid !== 'string') {
       toast({ title: "Not Logged In or Profile Issue", description: "Please ensure you are logged in and your profile is loaded to send messages.", variant: "destructive" });
+      console.error('[ChatInterface] Message send pre-check failed. User or profile data missing/invalid.');
       return;
     }
     if (currentUserTypingRef && !isAnonymousMode && loggedInUserProfile.displayName) {
@@ -365,7 +370,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     }
 
     let messagesDbRefPath: string;
-    if (chatType === 'team') { // Changed from 'gc'
+    if (chatType === 'team') { 
       messagesDbRefPath = `chats/${chatId}/messages`;
     } else {
       messagesDbRefPath = `chats/${chatId}`;
@@ -445,7 +450,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
                       const viewportRect = viewport.getBoundingClientRect();
                       if (rect.top >= viewportRect.top && rect.bottom <= viewportRect.bottom) {
                           messagesBeingMarkedAsRead.current.add(msg.id);
-                          const msgPath = msg.chatType === 'team' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`; // Changed 'gc' to 'team'
+                          const msgPath = msg.chatType === 'team' ? `chats/${chatId}/messages/${msg.id}` : `chats/${chatId}/${msg.id}`;
                           const messageRef = ref(database, msgPath);
                           update(messageRef, { readByRecipientTimestamp: serverTimestamp() })
                               .then(() => messagesBeingMarkedAsRead.current.delete(msg.id))
@@ -473,7 +478,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
   const handleToggleReaction = useCallback(async (messageId: string, reactionType: keyof Reactions, msgChatType: Message['chatType'], currentChatId: string) => {
     if (!authResolved || !currentUser?.uid || !loggedInUserProfile?.uid || !msgChatType || !currentChatId || isAnonymousMode) return; 
 
-    const messagePathPrefix = msgChatType === 'team' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`; // Changed 'gc' to 'team'
+    const messagePathPrefix = msgChatType === 'team' ? `chats/${currentChatId}/messages` : `chats/${currentChatId}`;
     const reactionRef = ref(database, `${messagePathPrefix}/${messageId}/reactions/${reactionType}`);
 
     try {
@@ -508,7 +513,7 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
             <Button variant="ghost" size="icon"> <MoreVertical size={20} /> </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {chatType === 'team' && ( // Changed from 'gc'
+            {chatType === 'team' && ( 
               <><DropdownMenuItem onClick={() => toast({title: "Feature", description:"Invite friends to Team clicked (UI only)"})}><UserPlus size={16} className="mr-2" /> Invite to Team</DropdownMenuItem>
                <DropdownMenuItem onClick={() => toast({title: "Feature", description:"Team info clicked (UI only)"})}><Info size={16} className="mr-2" /> Team Info</DropdownMenuItem>
                <DropdownMenuSeparator />
@@ -591,3 +596,5 @@ export function ChatInterface({ chatTitle, chatType, chatId = 'global', isAnonym
     </Card>
   );
 }
+
+    
