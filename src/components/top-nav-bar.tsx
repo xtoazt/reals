@@ -286,14 +286,8 @@ export function TopNavBar() {
         </Sheet>
 
         <Link href="/dashboard" className="flex items-center gap-2">
-          {/* New Team/Group Icon SVG */}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-            <circle cx="12" cy="8" r="3" stroke="currentColor" strokeWidth="1.5"/>
-            <circle cx="8" cy="15" r="3" stroke="currentColor" strokeWidth="1.5"/>
-            <circle cx="16" cy="15" r="3" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M12 11V12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <path d="M10.5 14.5L9 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <path d="M13.5 14.5L15 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M5 19L9 5L12 12L15 5L19 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
         </Link>
@@ -467,3 +461,4 @@ export function TopNavBar() {
     </>
   );
 }
+
