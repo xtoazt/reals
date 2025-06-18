@@ -46,7 +46,10 @@
         "messages": {
           ".indexOn": ["timestamp"],
           "$messageId": {
-            ".validate": "$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
+            // TEMPORARY DEBUGGING RULE: Very permissive write validation.
+            ".validate": "$chatId.matches(/^team-.*/) && newData.hasChild('senderUid') && newData.child('senderUid').val() === auth.uid",
+            // Original more specific validations (commented out or to be re-added piece by piece):
+            // ".validate": "$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
             "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
             "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -73,8 +76,11 @@
             "$other": { ".validate": false }
           }
         },
-        "$messageId": { 
-          ".validate": "!$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
+        "$messageId": {
+           // TEMPORARY DEBUGGING RULE: Very permissive write validation.
+          ".validate": "!$chatId.matches(/^team-.*/) && newData.hasChild('senderUid') && newData.child('senderUid').val() === auth.uid",
+          // Original more specific validations (commented out or to be re-added piece by piece):
+          // ".validate": "!$chatId.matches(/^team-.*/) && newData.hasChildren(['senderUid', 'senderName', 'senderUsername', 'content', 'timestamp', 'senderAvatar'])",
           "senderUid": { ".validate": "newData.isString() && ((!data.exists() && (newData.val() === auth.uid || newData.val() === 'system')) || (data.exists() && data.child('senderUid').exists() && newData.val() === data.child('senderUid').val()))" },
           "senderName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "senderUsername": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
@@ -164,8 +170,3 @@
     }
   }
 }
-    
-    
-
-    
-

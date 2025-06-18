@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { CreateTeamDialog } from './create-team-dialog'; // Changed to CreateTeamDialog
+import { CreateTeamDialog } from './create-team-dialog';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { auth, database } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -287,7 +287,8 @@ export function TopNavBar() {
 
         <Link href="/dashboard" className="flex items-center gap-2">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
-            <path d="M5 19L9 5L12 12L15 5L19 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 20V4H13C15.7614 4 18 6.23858 18 9C18 11.7614 15.7614 14 13 14H8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M13 14L18 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <h1 className="text-xl font-bold font-headline hidden sm:block">real.</h1>
         </Link>
@@ -461,4 +462,3 @@ export function TopNavBar() {
     </>
   );
 }
-
